@@ -5,7 +5,12 @@ terms:["CDN vs local vs distributed","Cache-aside","Write-through","Write-behind
 objectives:["Pick the cache layer from how stale the data may be and how far it may travel","Pick cache-aside, read-through, write-through or write-behind per data type","Answer the six cache questions for any cache you draw","Design invalidation and state the staleness window it permits","Name and prevent stampedes, penetration, hot keys and cold starts"],
 sections:[
 {id:"layer",title:"Which layer: browser, CDN, local, distributed",blocks:[
-["p","Ten million loads a day, a few edits a week. Each layer closer to the user is faster and harder to invalidate — decide which layers a datum may live in by how stale it may be."],
+["p","Ten million people load this product page a day. The description changes about once a month. The price changes a few times a year. The stock count changes every few seconds."],
+["p","Three pieces of data on one page, three completely different tolerances for being wrong. That is the whole chapter."],
+["p","A cache is a bet that the answer has not changed since you last asked. So the question is never whether to cache. It is how wrong you are willing to be, for how long, and about which field."],
+["p","Each layer sits closer to the user, answers faster, and is harder to correct. Redis is one delete away from being right. Each application server's in-process cache is only right again when its own copy expires, because there is no way to reach into fifty processes at once. The CDN is right again when you purge, and purging is slow and coarse. A browser that already has the page is right again when the user reloads."],
+["p","So the rule that organises everything below: a datum may live only in layers whose correction speed matches how urgently it must be right."],
+["p","The description can live everywhere, including the browser. The price can live in Redis and briefly at the CDN. The stock count at the moment of checkout may live nowhere at all — that one read goes to the database every single time, because being wrong there costs a sale and an apology."],
 D("CDN",{say:"Images and the rendered product page for anonymous users sit at the edge with a short TTL and stale-while-revalidate; origin sees a fraction of a percent of traffic.",
 use:["Static assets, media, cacheable public pages and API responses","Global users"],
 avoid:["Personalised or private responses unless the cache key includes the user — and then usually not worth it","Data that must be fresh within seconds"],
@@ -23,6 +28,14 @@ fails:"Cold start after deploy, stampede on expiry, hot key on one node, stale-w
 ["t","CDN → local → distributed → DB buffer pool: each step back is slower and more consistent. A price change reaches Redis with one delete, local caches at TTL, the CDN on purge, the browser on reload."]
 ]},
 {id:"pattern",title:"Which pattern: aside, read-through, write-through, write-behind",blocks:[
+["p","Cache-aside is the default, and it is worth being able to state in one breath: look in the cache; on a miss, read the database, write the answer into the cache with a TTL, and return it."],
+["p","It is simple. It survives the cache vanishing, because everything simply becomes a miss. And it caches only what somebody actually asked for, rather than everything that might be asked for."],
+["p","It also contains a race that almost nobody mentions and everybody eventually meets."],
+["p","Request A reads the database and gets the old price. Before A can write it into the cache, an admin changes the price and deletes the cache entry. Then A writes — putting the old price into the cache with a fresh, full-length TTL. The delete happened before the write it was supposed to invalidate, and the stale value now outlives the change by an hour."],
+["p","You can shorten the TTL so the damage is bounded, delete a second time a few hundred milliseconds after the write, or use a compare-and-set that only stores if nothing changed underneath. Which mitigation you choose matters much less than knowing the race is there."],
+["p","Write-through takes the other approach: write to the cache and the database together on the write path, so the cache is never stale for anything you wrote. It costs write latency, and note what it does not fix — a bulk price import that goes straight to the database bypasses the write path entirely, so you still need a TTL underneath as a backstop."],
+["p","Write-behind writes to the cache and flushes to the database later. That is how the view counter works: incrementing a database row once per page view would make it the single hottest row in the system, and nobody has ever needed an exact view count. The flush interval is a durability window — lose the cache node and you lose that many seconds of counts. For a view counter that is fine. For an order it would be a catastrophe, which is why the pattern is chosen per field and not per system."],
+["p","And that is the real reason to know all four. One page uses several at once. On this product page: the description is cache-aside at an hour; the price is cache-aside at five minutes with an explicit delete on change; the stock count is read-through at thirty seconds and uncached at checkout; the view count is write-behind flushed every ten seconds; and the images sit on the CDN for a year, because their filenames contain a content hash and a changed image is simply a different filename."],
 D("Cache-aside",{say:"App checks cache, misses, reads DB, writes cache with a TTL. Only requested data is cached; staleness is bounded by TTL plus explicit deletes on edit.",
 use:["General read-heavy data — the default pattern","Data that tolerates cache loss (it just refills)"],
 avoid:["Data that must never be stale (skip the cache)","When many code paths read the same data and will implement it inconsistently — consider read-through"],
@@ -43,7 +56,11 @@ consider:["Durability window = flush interval","Flush worker failure = silent lo
 ["t","Cache-aside is simple and survives cache loss; write-through buys freshness with write cost; write-behind buys write speed with durability. Mixing patterns per data type on one page is normal — say which and why."]
 ]},
 {id:"six-questions",title:"The six questions and the eviction choice",blocks:[
+["p","Every cache in your diagram should be able to answer six questions. Being asked one you have not considered is exactly how a cache stops being an optimisation and becomes an outage."],
 ["ex","For every cache you draw\n1 Key?          product:{id}:v3  (version so schema changes miss cleanly)\n2 Stored what?  the assembled response (most savings, hardest partial invalidation) or the row?\n3 TTL?          1 h description · 30 s stock · 5 min price\n4 Invalidated?  delete product:{id}:* on save; TTL is the backstop\n5 Unavailable?  fall through to DB — can it survive? if not, this isn't a cache, it's a dependency\n6 Stale OK?     description yes · price minutes · stock at checkout no"],
+["p","The fifth question is the one people skip, and it is the one that matters most."],
+["p","What happens when this cache is unavailable? If the answer is that everything falls through to the database and the database copes, then it is a cache. If the answer is that the database cannot possibly survive that, then it is not a cache — it is a dependency you have been failing to treat like one, without the replication, failover and capacity planning that any other dependency would have been given."],
+["p","That distinction is worth making explicitly in an interview, because it reframes a component everyone assumes is optional as one that is load-bearing."],
 D("TTL and invalidation together",{say:"Invalidation gives freshness on the write paths we remembered; the TTL bounds the damage on the ones we forgot. I always have both.",
 use:["Every cache"],
 avoid:["TTL-only for data anyone edits urgently","Invalidation-only — one forgotten admin script leaves stale data forever"],
@@ -54,6 +71,13 @@ avoid:["Relying on eviction as your invalidation strategy"],
 consider:["LRU is fooled by a full-catalogue crawl","LFU adapts slowly when popularity shifts","Most real caches run sampled approximations"]})
 ]},
 {id:"failure-modes",title:"Stampedes, penetration, hot keys, cold starts",blocks:[
+["p","Four ways caches fail. All four are invisible on a normal day and total on a bad one."],
+["p","The first is a stampede. A popular entry expires. In the millisecond after it does, five thousand in-flight requests all miss, and all five thousand go to the database — which has been comfortably serving one query an hour for that row and has no idea what is about to happen."],
+["p","Nothing failed. The entry expired, which is precisely what you asked it to do. The fix is to let one request perform the refill while the others wait a few milliseconds for its result, or to serve the stale value and refresh in the background. Both are a handful of lines, and neither is there by default."],
+["p","The second is penetration. A request for an id that does not exist misses the cache every time, because there is nothing to store — so it reaches the database every time. Somebody scraping sequential ids therefore bypasses your cache completely, which is the exact opposite of what you built it for. The fix is to cache the absence, with a short TTL so that a genuinely new object does not appear missing for long."],
+["p","The third is a hot key, which you already met on election night: one entry read so often that a single cache node saturates on network alone. Replicate that entry across several nodes, or let every application server hold it in memory after one miss."],
+["p","The fourth is the one that catches teams during an incident rather than before it. You restart the cache cluster. It is empty. The database has not seen full production read traffic since the day the cache was introduced — possibly years ago — and has never once been provisioned for it. Sending full traffic at an empty cache is how a five-minute cache restart becomes a forty-minute outage."],
+["p","Which is really the point of this chapter. A cache that is load-bearing needs the same care as a database: warming, failover, capacity planning, an owner. Calling it just a cache is how that care quietly never happens."],
 D("Cache stampede",{say:"When a hot key expires, one request refills while the others wait a few ms — or we serve stale and refresh in the background — so 5,000 misses never become 5,000 DB reads.",
 use:["Any hot key with a TTL"],
 consider:["Request coalescing / single-flight lock","Probabilistic early refresh before expiry","Stale-while-revalidate"],

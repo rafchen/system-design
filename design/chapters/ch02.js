@@ -5,6 +5,12 @@ terms:["Cursor vs offset","Idempotency key","Versioning","Rate limiting","Monoli
 objectives:["Pick a pagination style from who walks the list","Make a mutation safe to retry and say where the key lives and for how long","Version and rate-limit without breaking clients","Argue monolith vs microservices from a nameable boundary benefit","Choose sync vs async per call and separate control plane from data plane"],
 sections:[
 {id:"contract",title:"Resource modelling, status codes and validation",blocks:[
+["p","A payments API is a promise made to somebody else's code. Unlike a function signature, which you can change on a Tuesday afternoon, you cannot take it back. Every decision in this chapter is shaped by that."],
+["p","Here is a real one with a real answer. Should refunding a payment be POST /v1/refundPayment, or POST /v1/payments/{id}/refunds?"],
+["p","The second, and not because it is tidier. The second says a refund is a thing. It has an id. It has a status. It can be listed, and it can itself fail and be retried. The first says a refund is something that happens to a payment and leaves nothing behind."],
+["p","The moment support asks which refunds are currently pending, the first design has no answer and the second has a GET. Modelling nouns is not a style preference — it is a bet that anything worth doing is worth being able to look at afterwards."],
+["p","Status codes are part of the same contract, and the gap between 409 and 422 is not pedantry. A 409 means your request was fine but the world is not in the right state: you cannot refund more than was charged, not yet anyway. A 422 means the request itself was wrong and will be wrong forever."],
+["p","The first is worth retrying later. The second never is. A client that cannot tell them apart will either retry forever or give up immediately, and both of those are your fault, not theirs."],
 D("Resource-oriented endpoints",{say:"I model the domain as nouns — payments, refunds, customers — and let HTTP verbs carry the action, so the API is predictable and every proxy and cache understands it.",
 use:["Any REST API"],
 avoid:["Verbs in URLs (/createPayment) — a sign the resource model isn't thought through"],
@@ -13,6 +19,14 @@ cases:["Refund larger than the charge → 409, not 500","Unknown field in reques
 nuance:"Be precise in validation errors (which field) and vague in auth errors ('invalid credentials', never 'no such account')."})
 ]},
 {id:"pagination",title:"Offset or cursor pagination",blocks:[
+["p","GET /v1/payments returns a list. How much of it?"],
+["p","This sounds like the least interesting decision in the chapter. It is the one most likely to be wrong in a way nobody notices for a year."],
+["p","Take the obvious approach. Page one is the twenty newest payments. Page two is OFFSET 20. A user opens page one and reads it. While they read, three payments arrive. They click through to page two — and the three payments they already saw on page one have been pushed down into it. They see three duplicates, and three other payments they will never see at all."],
+["p","That is not an edge case. That is what happens to any list that grows while somebody is reading it, which is every list worth paginating."],
+["p","A cursor fixes it by remembering where you were rather than how far in you were. Encode the sort key of the last item returned, and the next page asks for everything after that point. New rows arriving above your position no longer shift you, because your position was never a count."],
+["p","It is also dramatically cheaper. OFFSET 100000 does not skip a hundred thousand rows — it walks them and throws them away, every time, so the last page of a long list is the slowest query in your system."],
+["p","What you give up is jumping to page forty. That is a genuine loss for a human clicking through an admin table and no loss whatsoever for a script walking an export. Humans and small tables, offset. Machines and unbounded tables, cursor."],
+["p","One trap worth knowing. The sort key has to be unique, or the cursor will silently skip or repeat rows at the boundary. A timestamp alone is not unique — two payments in the same millisecond are entirely ordinary — which is why the cursor carries the id alongside it as a tiebreaker."],
 D("Cursor pagination",{say:"Machines walk this list and it grows without bound, so I'll return an opaque cursor — the encoded sort key of the last item — which is O(1) per page and stable under inserts.",
 use:["Feeds, logs, exports, webhooks, anything a client iterates fully","Tables that grow without bound"],
 avoid:["Admin tables where a human jumps to page 40"],
@@ -27,6 +41,15 @@ avoid:["Arbitrary ?sort=anything — it's a full scan in disguise"],
 consider:["Composite index column order must match the query (Chapter 04)"]})
 ]},
 {id:"idempotency",title:"Idempotency keys",blocks:[
+["p","This is the most important section in the chapter, and it exists because of the four outcomes from Chapter 01."],
+["p","A client sends POST /v1/payments. The card is charged. The response is lost on the way back — a load balancer recycles, a phone switches from wifi to cellular, anything at all. The client sees a timeout. What should it do?"],
+["p","It has two options and both are wrong. Retry, and possibly charge the customer twice. Do not retry, and possibly never charge them while telling them it worked."],
+["p","There is no third option available to the client. Which means the third option has to be built by the server."],
+["p","An idempotency key is that third option. The client generates a unique value, sends it with the request, and promises to send the same value on every retry of that same intent. The server records the key with the response. When the key arrives a second time, the server does not do the work again — it replays what it said the first time."],
+["p","Now retrying is safe. Because retrying is safe, the client can always retry. Because the client can always retry, the lost response stops being a dilemma and becomes routine."],
+["p","One detail decides whether any of this works. Claiming the key and doing the work must not be separable in the wrong order. If you charge the card and then write the key, a crash in the gap leaves a charge with no record of it, and the retry charges again — which is precisely the bug the mechanism was built to prevent."],
+["p","So claim the key first, with a unique constraint, before anything irreversible happens. That is the same move as the shortener's colliding code in Chapter 01: do not coordinate, let the database refuse."],
+["p","Keys need an expiry, and it is worth naming one. Too short and a genuinely slow retry is treated as a new request. Twenty-four hours is the usual answer, and saying it shows you have thought about the fact that this table grows forever otherwise."],
 D("Idempotency key",{say:"A lost response makes the client retry, so every POST that creates or charges carries a client-generated key; we store the response against it and replay it on retry — the retry can never charge twice.",
 use:["Payments, orders, transfers, message sends — any mutation a client might retry","Batch endpoints: one key per item"],
 avoid:["GET, DELETE, idempotent PUT — already safe","Fire-and-forget analytics where a rare duplicate is acceptable"],
@@ -38,6 +61,15 @@ cases:["User double-clicks Pay → same key → same response","Client retries w
 ["t","One extra table and one TTL to choose, versus double charges under exactly the failure that is hardest to reproduce. For money it's mandatory; for a like button it's optional."]
 ]},
 {id:"versioning-auth",title:"Versioning, auth placement and rate limiting",blocks:[
+["p","You are going to change this API. The only question is whether the change breaks somebody."],
+["p","Adding a field is safe if — and only if — clients ignore fields they do not recognise. That is a rule you have to publish, loudly, because a client that validates strictly will turn your harmless new optional field into an outage on their side and a support ticket on yours."],
+["p","What you are asking for has a name: forwards compatibility, meaning old code has to tolerate data written by new code. It is the harder direction of the two, because the old code was written before anyone knew what was coming, and the only way to get it is to have told people the rule in advance."],
+["p","Everything that cannot be done additively is a v2, with a deprecation window and usage metrics on v1 — because you cannot switch off a version you are not measuring, and you will not be brave enough to try."],
+["h","Who you are, and what you may touch"],
+["p","Two words that get used interchangeably and must not be."],
+["p","Authentication is who you are. Authorization is what you may do, and crucially, to which object."],
+["p","The gateway can settle the first once, for everybody. It cannot settle the second, because it does not know that payment pay_8813 belongs to account acct_42. Only the payments service knows that."],
+["p","So if the gateway validates the token and the service then trusts it blindly, a completely valid token can read every payment in the system by changing one id in a URL. This is the single most common finding in real API security audits. It is not an exotic attack. It is changing a number."],
 D("API versioning",{say:"Additive changes ship within /v1; a breaking change is /v2 with a published deprecation window and usage metrics on the old version before it's turned off.",
 use:["Any API with external clients"],
 avoid:["Changing behaviour silently under the same version","Versioning every field — coarse major versions only"],
@@ -56,6 +88,14 @@ avoid:["When items must be atomic together — that's a transaction, not a batch
 consider:["Partial failure is the normal case; return per-item status","Cap batch size"]})
 ]},
 {id:"boundaries",title:"Monolith, modular monolith or microservices",blocks:[
+["p","Now the biggest question in the chapter, and the one most often answered by fashion rather than reasoning."],
+["p","You have a payments API. Should payments be its own service?"],
+["p","The answer that scores is not yes or no. It is being able to name what the split buys, because a split always costs the same four things, and the costs do not vary by company."],
+["p","A function call becomes a network call with four outcomes. A transaction becomes a saga with visible intermediate states. One log becomes distributed tracing. One deploy becomes a coordination problem between teams."],
+["p","Against that fixed price you need a specific benefit, and there are only four that count: independent deployment, independent scaling, fault isolation, or a compliance boundary. If you cannot say which of those four you are buying, you are paying the price for nothing."],
+["p","Payments buys two of them outright. It carries a PCI compliance scope that is much cheaper to keep small, and its failures are ones you badly want isolated from catalogue browsing, which generates no revenue and should not be able to take payments down with it."],
+["p","So payments splits. The catalogue does not, because nobody can name which of the four it would buy."],
+["p","And the failure mode of getting this wrong has a name worth carrying: the distributed monolith. Services that must be deployed together, that call each other synchronously in long chains, that share one database underneath. You have paid every cost of splitting and kept every constraint of not splitting."],
 D("Monolith",{say:"One deployable, one database, one transaction boundary — the fastest way to build and the right default until a specific boundary earns its own service.",
 use:["Small teams, early products, unclear domains","Workflows that need one transaction across the whole domain"],
 avoid:["Teams that block each other on every deploy","Components with genuinely different scaling or compliance needs"],
@@ -70,6 +110,13 @@ cases:["Two services constantly need each other's data in one transaction → th
 ["t","Microservices trade a compile-time problem (a large codebase) for a runtime problem (a distributed system). The runtime problem is harder. Name the benefit before you split."]
 ]},
 {id:"plumbing",title:"Gateway, discovery and statelessness",blocks:[
+["p","Three pieces of infrastructure appear as soon as there is more than one service. Two are plumbing. One hides a decision that matters more than the other two combined."],
+["p","The gateway is one front door: it terminates TLS, checks the token, applies rate limits and routes. Discovery means callers find healthy instances through a registry rather than a hard-coded address, so instances can come and go freely."],
+["p","The one that matters is statelessness, and it is routinely misunderstood."],
+["p","A stateless service is not one with no state. Payments obviously has state — that is the entire point of it. A stateless service is one where no request depends on which instance handled the previous request."],
+["p","That single property is what makes almost everything else in this book affordable. Scaling becomes adding a box. Deploying becomes killing one. A crash costs one request rather than a user's session. Load balancing needs no memory of anything."],
+["p","So where does the state go? Into the datastore, into the cache, or into a signed token the client carries. Never into the process."],
+["p","There is one honest exception: a connection that is itself the state, like the WebSocket gateway from Chapter 01. There you have knowingly given the property up, and the price is that you now have to plan draining, reconnection and failover by hand."],
 D("API gateway",{say:"One front door does TLS, auth, rate limiting and routing once; services trust its identity headers and do object-level authorization themselves.",
 use:["More than two or three services behind one public surface"],
 avoid:["A single monolith — the load balancer is enough","Letting business logic accumulate in it"],
@@ -83,6 +130,11 @@ avoid:["Only where the connection itself is the state: WebSocket gateways, game 
 consider:["Never keep a payment half-processed in memory across requests","Sticky sessions are a smell; shared session store or signed token instead"]})
 ]},
 {id:"sync-async-planes",title:"Sync vs async per call, and the two planes",blocks:[
+["p","Every call your payment service makes is one of two kinds: something it needs an answer to, or something it merely needs to have happened."],
+["p","The fraud score is the first kind. The answer changes what you do next — approve or decline — so you wait for it, with a timeout, and you decide in advance what to do when fraud is unavailable. Approve small amounts and hold large ones, perhaps. The point is to have an answer, not to have the right one."],
+["p","The receipt email is the second kind. Nothing about the payment depends on it. If you make the payment wait for the mail service, you have coupled the availability of taking money to the availability of sending email — a trade nobody would agree to if it were stated in those words, and one that is made accidentally all the time."],
+["p","So the test is short. Does the answer change what happens next? Then wait. Otherwise publish an event and move on."],
+["p","Getting this backwards is the most common architecture mistake there is, and it is expensive in both directions. Synchronous where it should be asynchronous ties your uptime to your least important dependency. Asynchronous where it should be synchronous means telling a user something succeeded when you do not actually know yet."],
 D("Synchronous call",{say:"Payments waits for the fraud score because the answer changes the outcome; 150 ms timeout, conservative fallback if fraud is down.",
 use:["The caller needs the result to proceed: fraud check, inventory check, auth"],
 avoid:["Side effects the caller doesn't need to confirm: email, analytics, indexing"],

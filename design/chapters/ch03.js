@@ -5,6 +5,13 @@ terms:["Vertical vs horizontal","L4 vs L7","Least connections","Consistent hashi
 objectives:["Justify every box in the standard request path from a requirement","Pick L4 or L7 and a routing algorithm from traffic shape","Explain consistent hashing well enough to say why only 1/N keys move","Design health checks that don't cascade","Choose active-passive vs active-active and reason about multi-region","Recognise a hot partition and name three fixes"],
 sections:[
 {id:"up-or-out",title:"Scale up or scale out",blocks:[
+["p","It is eight in the evening on election night. Your news site normally serves two thousand requests a second. Tonight it will serve fifty thousand, almost all of them for a single page, and the traffic will arrive over roughly four minutes."],
+["p","Every technique in this chapter is a response to some part of that sentence."],
+["p","Start with the crudest fix available: buy a bigger machine. It is unfashionable and it is genuinely underrated. It requires no code changes, no distributed anything, and no new failure modes, and it will get a typical service from five hundred requests a second to several thousand over a weekend."],
+["p","It has exactly two limits, and they are hard ones. There is a biggest machine you can buy. And one machine is one failure — every upgrade is a restart, and every crash is an outage."],
+["p","Scaling out removes both limits and introduces one precondition that is very easy to skip past: the servers have to be interchangeable."],
+["p","If a logged-in user's session lives in server three's memory, then the servers are not interchangeable. Adding a fourth does not add capacity for that user; it adds a machine that cannot serve them, and a fifty percent chance of logging them out on every request."],
+["p","So the first real work of scaling out is not adding servers. It is taking the state out of the ones you already have."],
 D("Vertical scaling",{say:"We're at 500 rps on one box; a bigger box gets us to 5k with zero code changes, so I'd do that first and use the time to make the tier stateless.",
 use:["Early stage, moderate load","Databases — the write leader scales up long before it scales out"],
 avoid:["High availability needs — one box is one failure","Past the biggest instance available"],
@@ -17,6 +24,13 @@ consider:["State must live somewhere all servers reach: DB, cache, queue","Coord
 ["t","Scale the stateless tier out and the database up until forced to shard. Justify each box or erase it."]
 ]},
 {id:"balancer",title:"L4 or L7, and which algorithm",blocks:[
+["p","Traffic arrives, and something has to decide where it goes."],
+["p","The first choice is about what the balancer is allowed to look at. A layer 4 balancer sees addresses and ports — it forwards a TCP connection without ever knowing what is inside it. That makes it fast, protocol-agnostic, and completely blind."],
+["p","A layer 7 balancer reads the request. It costs CPU per request and it has to understand the protocol, and in exchange it can do the thing you need tonight: route /live-results to a pool of its own, with its own cache and its own capacity, so that a stampede on one page cannot starve everything else on the site."],
+["p","The second choice is how it picks a server, and it comes down to one question: are your requests alike?"],
+["p","Round robin assumes they are. Each server gets every Nth request, and if requests take roughly the same time, the load lands evenly. It is simple and it is right far more often than people expect."],
+["p","Tonight they are not alike. A results page served from cache takes two milliseconds. An article page with a cold cache and a slow query takes two hundred. Under round robin, the server that happens to receive several slow requests in a row keeps receiving new ones anyway, because round robin has no idea it is struggling."],
+["p","Least connections notices. It tracks how many requests each server currently has open and sends the next one to whoever is least busy, which is a rough proxy for whoever is coping. When request durations vary by two orders of magnitude, that proxy is worth the bookkeeping."],
 D("L7 load balancer",{say:"An L7 balancer lets me route /live-results to a dedicated pool with a hotter cache, retry idempotent GETs, and shed load per endpoint.",
 use:["HTTP at the edge","Routing by path, host, header or cookie","Per-endpoint limits and retries"],
 avoid:["Databases, brokers, non-HTTP — use L4"],
@@ -31,6 +45,16 @@ avoid:["In-memory sessions — server dies, users logged out; heavy users pile o
 consider:["Breaks even distribution and failover"]})
 ]},
 {id:"consistent-hashing",title:"Consistent hashing",blocks:[
+["p","You have twelve cache nodes and you need fourteen. How much of the cache survives the change?"],
+["p","With the obvious scheme — hash the key, take it modulo the number of nodes — almost none of it."],
+["p","Modulo twelve and modulo fourteen are unrelated functions. Nearly every key now maps to a different node than it did a second ago. Around ninety-two percent of your cached entries are effectively gone: still in memory somewhere, but nobody will ever look for them there again."],
+["p","Which means ninety-two percent of reads become misses, and every one of those misses goes to the database — at the precise moment you were adding capacity because you were already struggling. The act of scaling up caused the outage."],
+["p","Consistent hashing avoids this by not putting the node count into the calculation at all."],
+["p","Picture the hash space as a circle. Each node is placed at several points around it. Each key is placed at one point, and belongs to the first node clockwise from where it landed. Nothing in that description mentions how many nodes there are."],
+["p","Now add a node. It lands somewhere on the circle and takes ownership of the keys in the arc between itself and the node behind it. Those keys move. Every other key on the circle is exactly where it was, still owned by the same node, still a cache hit."],
+["p","The fraction that moves is roughly one over N — about eight percent going from twelve to fourteen. That is not a clever optimisation, it is the theoretical floor: you cannot add capacity without moving some work onto it."],
+["p","The several points per node matter more than they look. With one point each, the arcs come out wildly uneven, so some nodes own three times what others do — and worse, removing a node dumps its entire share onto whichever single neighbour sits next to it. A hundred or more virtual points per node smooths both problems away."],
+["p","Now the limitation, and tonight it is the one that counts. Consistent hashing distributes keys evenly. It does not distribute load evenly. If forty thousand of your fifty thousand requests are for one key, that key lives on one node, and no hashing scheme ever invented will help. Which is the last section of this chapter."],
 D("Consistent hashing",{say:"Cache nodes will be added under load, so I hash keys and nodes onto a ring with virtual nodes; adding a node moves ~1/N of keys instead of ~90% with mod-N.",
 use:["Distributed caches, sharded stores, any tier where nodes join and leave and locality matters"],
 avoid:["Tiny fixed clusters — fixed slots are simpler","Skewed workloads where one key dominates — hashing spreads keys, not load"],
@@ -41,6 +65,13 @@ cases:["12 cache nodes → 14 on election night: ~14% of entries refill, not 100
 ["ex","Adding 2 nodes to 10\nmod-N hashing        ~92% of keys move → every cache cold\nconsistent hashing   ~8% of keys move → the theoretical minimum"]
 ]},
 {id:"health-checks",title:"Health checks and redundancy",blocks:[
+["p","A server stops responding. Something has to notice, and the way you build that noticing is a surprisingly good way to cause an outage."],
+["p","Here is the version that does it. Every server exposes a health endpoint, and to prove it is really working, that endpoint runs a query against the database."],
+["p","The database has a two-second hiccup. Every health check fails at once. The load balancer, working exactly as designed, removes every server from rotation. The site is now down — and the database recovered a second ago."],
+["p","The lesson generalises: a health check that depends on something shared turns one component's bad moment into total failure. Liveness checks should be shallow. Is this process alive and able to answer? Nothing more."],
+["p","There is a second distinction that matters even more under load. Busy is not dead."],
+["p","A server at a hundred percent utilisation is still doing useful work. If your check times out and the balancer evicts it, its traffic moves to the remaining servers — which are also at a hundred percent — so they slow down too, and fail their checks, and are evicted. Ninety seconds later everything is out of rotation and nothing has actually broken."],
+["p","That is a cascade, and on election night it is the single most likely way for the site to fall over. It is also why a saturated server should shed load — refuse cheaply and immediately — rather than quietly fail a health check and get itself removed. Chapter 08 takes this apart properly."],
 D("Health checks",{say:"Shallow liveness for the balancer so a GC pause doesn't evict a server; deep readiness for deploys so a new instance takes traffic only when its caches and pools are warm.",
 use:["Every balanced tier"],
 avoid:["Deep checks that hit the DB on every probe — a DB hiccup fails every server at once and the balancer removes all of them"],
@@ -58,13 +89,19 @@ D("Multi-region",{say:"Users are global, so reads come from a nearby region; wri
 use:["Global user base (latency)","Business cannot survive a regional outage (DR)"],
 avoid:["Because it sounds robust — it roughly doubles cost and makes every consistency question hard"],
 consider:["Stateless + CDN replicate effortlessly; the database is the problem","Single-leader: distant writes slow. Multi-leader: conflicts. Pick per dataset","Multi-zone within a region is the cheap default; multi-region is the expensive exception"]}),
+["p","And notice what autoscaling cannot do for you tonight."],
+["p","It reacts in minutes: observe the load, decide, start instances, boot them, warm their caches, add them to the pool. The result arrives in seconds. By the time the new capacity is serving traffic, the moment that needed it has passed and the moment that follows is a different shape entirely."],
+["p","Autoscaling handles the shape of an ordinary Tuesday, and it does that well. For a spike you know is coming, you pre-scale hours ahead and pay for capacity you have not used yet. That is not a failure of the tooling; it is what buying insurance looks like."],
 D("Autoscaling",{say:"Autoscaling follows the daily curve; for election night I pre-scale 5× hours ahead and let it handle the descent — it reacts in minutes, not seconds.",
 use:["Predictable curves, steady growth","Worker pools scaling on queue depth"],
 avoid:["Flash crowds and launches — pre-scale","Scaling the database — it doesn't; protect it with caches and queues"],
 fails:"Scale-down during a lull then a second wave; scaling on CPU when the bottleneck is the DB."})
 ]},
 {id:"hotspots",title:"Hot partitions and uneven traffic",blocks:[
-["p","Every technique above assumes traffic spreads out. 40k of 50k rps for one results page breaks that: balancing requests evenly does nothing when every server needs the same cache entry from the same node."],
+["p","Everything so far has quietly assumed that traffic spreads out. Tonight it does not."],
+["p","Forty thousand of your fifty thousand requests are for one results page. Every technique in this chapter distributes requests evenly across servers — and then every one of those servers turns around and needs the same cache entry from the same cache node. You have balanced the requests perfectly and concentrated the load perfectly."],
+["p","This is the difference between a scale problem and a hotspot, and it is worth being able to say out loud: adding servers does not fix a hotspot, because the servers were never the constraint. The constraint is that one piece of data is wanted by everybody at once, and it can only live somewhere."],
+["p","There are only a handful of real moves, and all of them trade locality against balance."],
 ["tbl",{cols:["Fix","Use when","Tradeoff"],rows:[
 ["Cache closer (CDN / in-process)","Hot object is public or per-server staleness is OK","Hardest to invalidate; 10 s edge TTL removes 99.9% of origin traffic"],
 ["Replicate the key","One cache node saturates","Write to K nodes, read from any; K× cache writes"],
@@ -72,6 +109,8 @@ fails:"Scale-down during a lull then a second wave; scaling on CPU when the bott
 ["Coalesce requests","Hot key expires under load","One refill, others wait ms; needs a lock or single-flight"],
 ["Better partition key","Hotspot is structural (partition by date)","Partition by article id spreads writes; loses range-by-time locality"],
 ["Dedicated pool","One tenant/event dominates","Isolation; capacity may idle"]]}],
+["p","On election night the move that does most of the work is the first one: cache closer. A ten-second TTL at the CDN sounds uselessly short until you do the arithmetic. Ten seconds means the origin serves that page six times a minute — regardless of whether fifty people are reading it or fifty million."],
+["p","Ten seconds of staleness on a page whose numbers change every thirty seconds is invisible to a reader, and it removes something like 99.9% of the traffic before it reaches anything you own. That is the whole trade: a small, bounded lie about freshness in exchange for three orders of magnitude."],
 D("Naming the hotspot",{say:"The results page is the hot key. CDN with a 10 s TTL and stale-while-revalidate; counter salted across 8 keys refilled by one worker; the DB sees one write per update, not one read per visitor.",
 use:["Name the hotspot before the interviewer does, in every design"],
 consider:["Sources: one object (viral), one tenant (bulk import), one time range (today's partition), one accidental key (anonymous user id 0)"],

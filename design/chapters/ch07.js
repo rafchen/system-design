@@ -5,7 +5,14 @@ terms:["Task queue vs log","Partition","Consumer group","Offset","At-least-once"
 objectives:["Pick the shape of asynchrony from: needs the answer now? how many consumers? does history matter?","Choose partition count and key from ordering and parallelism needs","Choose a delivery guarantee and make the consumer idempotent","Design for lag, backpressure, poison messages and replay","Sketch the upload pipeline end to end"],
 sections:[
 {id:"shape",title:"Which shape of asynchrony",blocks:[
-["p","A ten-minute video needs minutes of processing. The upload request must end with 'received'. Three questions pick the mechanism: does the caller need the result now? how many independent consumers? must events be retained and replayed?"],
+["p","Someone uploads a ten-minute video. Transcoding it into six resolutions takes about four minutes. The upload request cannot take four minutes."],
+["p","So something has to be decoupled. This chapter is about choosing which shape of decoupling, and three questions settle it: does the caller need the result in order to continue, how many things need to react, and will the history matter later?"],
+["p","Check that this user is allowed to upload. The answer changes what happens next, so it stays a plain synchronous call."],
+["p","Generate a thumbnail. One consumer, done once, and nobody will ever need to look at that instruction again. That is a task queue: a job goes in, a worker takes it, completes it, and the job is deleted."],
+["p","Now transcoding, moderation and analytics all need to know that a video was uploaded. Three independent consumers, none of which should have to know the others exist. A task queue does not fit, because whoever takes the job removes it and the other two never see it. This is publish-subscribe."],
+["p","And then the question that decides between an ordinary message broker and a durable log. Six months from now you will improve the moderation model and want to re-run it across everything uploaded since launch. Can you?"],
+["p","With a queue, no. A consumed message is gone — the queue's job was to deliver it, and it did. With a log, events are retained independently of whether anyone has consumed them. Consumers hold a position rather than a claim, so adding a consumer next year means starting one at whatever offset you like and letting it read through history at its own pace."],
+["p","That single property is what justifies the operational weight of running a log. And if you do not need it, you should not be running one. A jobs table in the database you already have, polled by a handful of workers, is a completely respectable answer for a great many systems, and saying so out loud scores better than reaching for Kafka by reflex."],
 D("Synchronous call",{say:"Is this user allowed to upload? Yes or no, now — a synchronous check with a timeout.",
 use:["Caller needs the result to proceed"],
 avoid:["Anything taking longer than a request should","Side effects the caller needn't confirm"]}),
@@ -27,6 +34,13 @@ cases:["Add a new consumer next year → replay 7 days from the log","Moderation
 ["t","A task queue is simplest when work has one consumer and no history matters. A log costs a cluster and lets you add a consumer next year that reads every event since launch."]
 ]},
 {id:"partitions",title:"Partitions, keys, consumer groups, retention",blocks:[
+["p","A log is not one sequence. It is several, and how events are divided between them determines both your ordering guarantee and your ceiling on parallelism."],
+["p","Order exists inside a partition and nowhere else. Two events in the same partition are read in the order they were written. Two events in different partitions have no defined order at all — not a weak one, none."],
+["p","So the key is whatever needs ordering. Here that is video_id: uploaded, transcoded and published for one video land in one partition and are seen in sequence, while events for different videos sit in different partitions and are processed simultaneously."],
+["p","Notice what you deliberately did not ask for. A single global order across every event in the system would require a single partition, and a single partition means a single consumer, which means no parallelism whatsoever. That is why nobody sells it."],
+["p","Ordering is not free. It is bought by giving up concurrency, and the craft is buying exactly as much as the invariant needs and not one unit more. This is head-of-line blocking from Chapter 01 wearing different clothes: ordering within a scope, and the scope is the part you choose."],
+["p","Two practical consequences follow. Partition count is close to permanent, because changing it re-maps keys to different partitions — so ordering breaks across the change and a single key's history ends up split between two places. Pick for the parallelism you will want in two years, not the parallelism you need this week."],
+["p","And a consumer group can never usefully have more instances than partitions. Forty-eight partitions means at most forty-eight transcoders doing work; the forty-ninth starts up, is assigned nothing, and sits there costing money."],
 D("Partition key",{say:"Key every event by video_id so all events for one video land in one partition and are seen in order — uploaded, transcoded, published — while different videos interleave freely.",
 use:["Choose the key as the entity that needs ordering: conversation, account, video"],
 avoid:["A key with few distinct values (hot partition)","No key when order matters (round-robin loses it)"],
@@ -44,6 +58,12 @@ consider:["Retention is independent of consumption — that's what makes replay 
 ["ex","video.uploaded     key video_id · 48 partitions · 7 d\nvideo.transcoded   key video_id · 48 partitions · 7 d\nvideo.metadata     key video_id · compacted"]
 ]},
 {id:"guarantees",title:"Delivery guarantees and idempotent consumers",blocks:[
+["p","The transcoder finishes a video, writes the output, and crashes before acknowledging the message. What happens?"],
+["p","It gets redelivered. That is not a bug; it is the only safe behaviour available. The broker cannot know whether you finished, because the acknowledgement is the thing that would have told it, and the acknowledgement is exactly what went missing. Offered a choice between possibly losing the message and possibly delivering it twice, at-least-once chooses twice."],
+["p","Which means duplicates are not an exceptional condition to be handled if there is time at the end of the sprint. They are routine, and they are guaranteed — every deploy, every consumer rebalance, every time a worker is killed."],
+["p","So the design question is not how do I stop duplicates. It is: what happens when this handler runs twice?"],
+["p","For the transcoder there is a lovely answer. Write outputs to a deterministic path derived from the video id and version. A second run produces identical bytes at the identical location and harmlessly overwrites itself. The work is wasted; the result is unchanged. That is idempotence obtained for free, purely by choosing the path scheme carefully."],
+["p","When the effect is not naturally repeatable — charging a card, sending an email, incrementing a total — you fall back to recording the processed event id in the same transaction as the effect, exactly as in Chapter 05. Deliver many times, act once."],
 ["tbl",{cols:["Guarantee","Use when","Tradeoff"],rows:[["At-most-once","Losing beats duplicating (metrics samples)","Ack before processing; messages vanish on crash"],["At-least-once","Must eventually be processed — everything serious","Ack after processing; duplicates on crash-before-ack"],["Effectively once","Duplicates must not change the result","At-least-once + idempotent consumer"]]}],
 D("Idempotent consumer",{say:"The transcoder checks whether outputs exist for (video_id, upload_version) and writes to deterministic paths, so a redelivered event is a no-op — effectively once.",
 use:["Every consumer with side effects — assume duplicates will happen"],
@@ -54,6 +74,13 @@ cases:["Rebalance mid-job → another instance gets the same message","Deploy re
 ["t","At-least-once plus idempotency costs one lookup per message. Without it every retry, redeploy and rebalance is a potential double effect. Ask of every handler: what happens when this runs twice?"]
 ]},
 {id:"operating",title:"Lag, backpressure, poison messages, replay",blocks:[
+["p","The pipeline is built. Now the part that decides whether it survives contact with production."],
+["p","The health metric for a queue is not the error rate. It is lag."],
+["p","A pipeline failing loudly is fine — you will hear about it within minutes. A pipeline succeeding at ninety percent of the rate work arrives is silently accumulating a backlog while processing every single message correctly. Nothing errors. Nothing alerts. The only symptom is that a creator's video has said processing for an hour, and by the time anyone investigates, the backlog is six hours deep and will take all night to drain."],
+["p","So alert on lag, and measure it in seconds rather than messages. A backlog of a hundred thousand messages means nothing at all until you know how fast you drain them."],
+["p","When lag does grow there are exactly three levers, and it is worth having them ranked before you need them. Add consumers, up to the partition count. Do less work per message — drop the 4K rendition first, since almost nobody watches it. Or slow the producers, which for an upload pipeline means telling users their video will take longer than usual."],
+["p","There is no fourth lever. A queue is a buffer, not infinite capacity, and a buffer that never drains is just a slower way to run out of disk."],
+["p","One more failure worth designing for in advance. A single corrupt upload that crashes the transcoder will be redelivered forever, and because ordering is per partition, it blocks every message behind it in that partition. Three attempts, then move it aside to a dead-letter queue with the error attached, and alert on how deep that queue gets. Retrying forever on a message that can never succeed is not resilience. It is a stuck pipeline that looks busy."],
 D("Consumer lag as the health metric",{say:"We alert on lag at 5 minutes, not on error rate — a growing backlog looks like nothing is wrong until users notice their video has been 'processing' for an hour.",
 use:["Every pipeline"],
 consider:["Lag in messages and in seconds","Dashboards per group"]}),

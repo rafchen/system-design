@@ -5,7 +5,13 @@ terms:["Four outcomes","Timeout","Backoff + jitter","Retry budget","Circuit brea
 objectives:["State the four outcomes and what the caller does in each","Write a retry policy with backoff, jitter, budget and idempotency","Place breakers, bulkheads and shedding in a request path and say whom each protects","Explain how a cascade starts and three ways to stop it","Set RPO/RTO per component and choose backup, replication or multi-zone from them"],
 sections:[
 {id:"four-outcomes",title:"The four outcomes of every call",blocks:[
+["p","Checkout calls the payment provider. The call times out. Was the card charged?"],
+["p","You do not know. That is not a gap in your monitoring or a flaw in your code. It is a property of networks, and it is the most important sentence in this chapter."],
 ["ex","1 Succeeds, response arrives      — happy path\n2 Fails, error arrives            — recoverable, you know\n3 Succeeds, response lost         — the card WAS charged; you got a timeout\n4 Still running when you give up  — may succeed a second later, or not"],
+["p","The first two are the ones everyone designs for. The third and fourth are where money is lost."],
+["p","A response you did not receive is not evidence that the work did not happen. Somewhere between the provider committing the charge and those bytes reaching you, something was dropped — and now the customer's card is debited while your orders table believes nothing occurred."],
+["p","Which is why every arrow in the diagram needs an answer prepared in advance. Retry with the same idempotency key from Chapter 02, so that the retry costs nothing if the charge did happen and fixes things if it did not. Then reconcile against the provider's own records on a schedule, because the retry can fail too and something has to notice."],
+["p","In an interview, the examiner will walk your diagram and ask, for arrow after arrow, and if that times out? Having a real answer each time is most of what this chapter is worth."],
 D("Designing for outcome 3",{say:"For every arrow in the diagram: if the response is lost, the caller retries with the same idempotency key, and a nightly reconciliation catches anything the retry didn't.",
 use:["Every network call, especially anything with money or inventory"],
 avoid:["Assuming calls succeed or fail cleanly — it's true in dev and false at scale a thousand times a day"],
@@ -13,6 +19,16 @@ consider:["Idempotency keys (Ch. 02) make the retry safe","Reconciliation agains
 cases:["Capture succeeded at the provider, we timed out → retry same key → provider returns the same result","Order written, event publish lost → outbox (Ch. 05)"]})
 ]},
 {id:"timeouts-retries",title:"Timeouts, retries, backoff, jitter, budgets",blocks:[
+["p","A dependency hangs. How long do you wait?"],
+["p","Thirty seconds is the answer that causes the outage, and one global timeout applied to every call is that same answer wearing a disguise."],
+["p","Set it from each dependency's own p99 plus a margin. The fraud check normally answers in forty milliseconds, so a hundred and fifty is generous and anything slower was never going to arrive in time to be useful. Card capture normally takes two seconds, so five. Those are different numbers because they are different dependencies, and one value is wrong for both of them."],
+["p","The reason the number matters so much is not the waiting itself. A request blocked on a hung dependency is holding a thread, a connection, and a slot in every pool between it and the user. Waiting thirty seconds does not merely make one customer wait thirty seconds. It withdraws capacity from everybody else for thirty seconds."],
+["h","Why retries are dangerous"],
+["p","Now the arithmetic that turns a helpful mechanism into a harmful one."],
+["p","A dependency starts failing half its calls. Every client retries three times. That dependency's incoming load has just tripled, at the exact moment it is least able to absorb it. The retries are not helping it recover. They are the reason it cannot."],
+["p","So retries come with three constraints. Retry only what could plausibly succeed: timeouts and 503s, never a 4xx and never a declined card, because no number of attempts will change a decline. Back off exponentially and add jitter — without jitter, a thousand clients that failed together retry together, in synchronised waves, and each wave knocks the service down again just as it stands up."],
+["p","And cap the total. A retry budget of roughly ten percent of first attempts, after which you fail fast. The budget is the part everyone leaves out, and it is precisely the part that turns retries from an amplifier into a safety net."],
+["p","One more, easy to miss and expensive: retry at one layer only. If the SDK retries three times, and your service retries three times, and the gateway retries three times, then one user pressing a button once becomes twenty-seven attempts against a service that was already in trouble."],
 D("Timeouts",{say:"Every outbound call has a timeout set from the dependency's p99 plus margin, per operation: 150 ms for fraud, 5 s for card capture. No global value.",
 use:["Every call — a dependency without a timeout holds a thread until the user gives up"],
 avoid:["One global timeout — wrong for both fast and slow dependencies"],
@@ -27,6 +43,14 @@ cases:["Payment capture: retry with key","Fraud score: no retry, use fallback �
 ["t","Retries improve success under blips and worsen outages that are load-related. The budget is what lets you have the first without the second."]
 ]},
 {id:"isolation",title:"Circuit breakers, bulkheads, load shedding, degradation",blocks:[
+["p","Three mechanisms, and the useful way to hold them in your head is by who each one protects."],
+["p","A circuit breaker protects the caller. Recommendations is down, and every call to it burns the full timeout before failing. Your checkout threads are now spending five seconds each waiting for an answer you were going to render as an empty row anyway. After twenty consecutive failures the breaker opens: stop calling, fail instantly, draw the page without that row. Every thirty seconds, let a single request through to see whether it has recovered."],
+["p","It protects the dependency too, by giving it quiet in which to recover rather than a wall of traffic the instant it comes back up."],
+["p","A bulkhead protects your dependencies from each other. Each gets its own connection pool and concurrency limit, so a slow recommendation service exhausts its own compartment while payments carries on. Share one pool between them and a single slow dependency consumes every thread in it, taking down calls that had nothing to do with it."],
+["p","Load shedding protects the callee, which in this case is you. Above roughly ninety percent saturation, start refusing low-priority work with a cheap 503 and a Retry-After. Analytics and recommendation refreshes go first. Checkout is never shed."],
+["p","The arithmetic here is stark and worth saying aloud. A rejected request costs microseconds. A request you accept and then fail to serve costs a thread for the entire timeout. Under overload, refusing work quickly is how you keep serving the work you already accepted — and autoscaling is far too slow to do this job for you."],
+["p","Graceful degradation is the same decision expressed to the user. If the tax service is down, show an estimate and label it. If recommendations are down, the row is simply absent and nobody notices. If payments is down, you are down — because a checkout that silently guesses at a tax total is considerably worse than an honest error."],
+["p","Decide which dependencies are essential and which are optional now, in writing. You will not be making good judgements about it at two in the morning on Black Friday."],
 D("Circuit breaker",{say:"Recommendations get a breaker: after 20 consecutive failures we stop calling for 30 s, serve the page without them, then probe with one request.",
 use:["Synchronous dependencies that fail as a unit and have a fallback"],
 avoid:["Dependencies without a sensible fallback — you'd just fail differently","Async paths — use a DLQ instead"],
@@ -47,7 +71,12 @@ consider:["Decide essential vs optional per feature, in advance","Protects the u
 ["t","Breakers and bulkheads protect the caller; shedding protects the callee; degradation protects the user. A complete design has all three and says which features may vanish under stress."]
 ]},
 {id:"cascades",title:"Cascading failures",blocks:[
+["p","Here is how a site goes down on Black Friday without a single component failing."],
 ["ex","Black Friday 09:00\nOne server GC-pauses, fails health check, evicted.\n9 servers at 85% → 95%. Two slow, fail checks, evicted.\n7 servers > 100%. Ninety seconds later: all evicted, all restored,\nall evicted again. Checkout down. No hardware failed. No bug."],
+["p","Read that again and notice what actually broke. Nothing. No hardware fault, no bug, no bad deploy. One garbage collection pause, amplified by mechanisms that were each individually sensible."],
+["p","That is the defining property of a cascade. Every mechanism that helps you survive a small failure — retry, reroute, restart, evict — amplifies a large one. The behaviours are not wrong. They are correct at one scale and catastrophic at another, and nothing in the system knows which scale it is currently in."],
+["p","Which is why the brakes have to exist before the event. Shed load before you are saturated rather than after. Cap retries with a budget. Run with enough headroom to lose your largest failure domain at peak traffic. Bring recovered servers back gradually instead of at full load, because a cold server given full traffic fails immediately and rejoins the cascade."],
+["p","And keep manual brakes within reach, because you will want them: pause the balancer's evictions, block the client retrying hardest, switch off the optional feature. Knowing in advance which switches exist is the difference between a ten-minute incident and a two-hour one."],
 D("Stopping a cascade",{say:"Shed load early, cap retries with a budget, run with headroom for losing the largest failure domain at peak, slow-start recovered servers, and make health checks tell 'busy' from 'dead'.",
 use:["Design these in before the event, not during"],
 consider:["Feeders: retries, load-based health-check eviction, cold caches, lagging autoscaling, synchronous chains without timeouts, full traffic to a cold instance","Manual brakes: pause balancer eviction, block the retrying client, turn off the optional feature"],
@@ -55,6 +84,14 @@ fails:"Every mechanism that helps in a small failure — retry, reroute, restart
 ["t","The goal isn't to eliminate failure; it's to make the system fail in a bounded, recoverable way rather than a self-amplifying one."]
 ]},
 {id:"recovery",title:"Redundancy, RPO/RTO, zones and backups",blocks:[
+["p","Finally, the two questions that decide how much redundancy you actually buy. They are answered per component, never once for the whole company."],
+["p","RPO is how much data you can afford to lose. RTO is how long you can afford to be down. Write both down for each system and the strategy falls out on its own."],
+["p","For the orders database RPO is zero — you cannot lose an order somebody has paid for — and that single number forces a synchronous replica, which costs a few milliseconds on every write forever. For the session cache RPO is effectively infinite: users log in again and are mildly irritated. For analytics, twenty-four hours from last night's snapshot is completely fine."],
+["p","Three answers, three different architectures, three very different bills. The mistake is choosing one number for everything, which is either far more expensive than it needed to be or quietly not good enough where it mattered."],
+["h","A replica is not a backup"],
+["p","One distinction that costs companies dearly, usually once."],
+["p","A replica survives a machine dying. It also replicates a mistaken DELETE perfectly, instantly, to every copy you own. The thing that saves you from corruption and from human error is a backup — an old copy that deliberately does not track the present."],
+["p","So you need both. And you need to actually restore from a backup on a schedule, because a backup nobody has restored is a hope rather than a plan. The same is true of a standby nobody has ever failed over to. The only way to know either of them works is to have used it recently, on purpose, when nothing was wrong."],
 D("RPO and RTO per component",{say:"Orders DB: RPO 0 with a synchronous replica, RTO 60 s with automatic failover. Session cache: RPO infinite (users re-login), RTO 5 min. Analytics: RPO 24 h from nightly snapshot.",
 use:["State them per system; they choose the redundancy strategy"],
 avoid:["One number for the whole company"],
