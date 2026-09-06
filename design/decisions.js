@@ -72,6 +72,6 @@ ambiguity: [
 ],
 plan: [
 ["p","Pick practice systems by the shape you need to train, not by fame."],
-["tbl",{cols:["Shape","Practice systems","Chapters"],rows:[["Contention","Ticketmaster, inventory, ride assignment","04, 05"],["Fan-out","Twitter feed, group chat, notifications","11, 07"],["Large objects","YouTube, Dropbox, Pastebin","04, 11"],["Ordering","WhatsApp, ledgers, logs","05, 07"],["Search","Autocomplete, Google Search","11"],["Async processing","Video pipeline, job scheduler, crawler","07, 08"],["Product-shaped","Meetup matcher, approvals, desk booking","13 §7"]]}]
+["tbl",{cols:["Shape","Practice systems","Chapters"],rows:[["Contention","Ticketmaster, inventory, ride assignment","04, 10"],["Fan-out","Twitter feed, group chat, notifications","09, 14"],["Large objects","YouTube, Dropbox, Pastebin","04, 14"],["Ordering","WhatsApp, ledgers, logs","09, 10"],["Search","Autocomplete, Google Search","14"],["Async processing","Video pipeline, job scheduler, crawler","09, 11"],["Product-shaped","Meetup matcher, approvals, desk booking","15 §7"]]}]
 ]
 };
