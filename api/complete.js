@@ -6,7 +6,7 @@ export const maxDuration = 60;
 
 const MODEL = "claude-opus-5";
 const MAX_TOKENS_CAP = 8000;   // the app asks for 2500-6000; cap the rest
-const MAX_PROMPT_CHARS = 12000;
+const MAX_PROMPT_CHARS = 24000;  // the search catalogue alone is ~7.5KB
 
 // Best-effort rate limiting. This lives in one warm instance's memory, so
 // it bounds a single instance rather than the deployment as a whole. It is

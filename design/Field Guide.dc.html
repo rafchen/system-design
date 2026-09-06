@@ -51,7 +51,26 @@ textarea{font:inherit}
             </div>
           </sc-for>
           <sc-if value="{{ searchEmpty }}" hint-placeholder-val="{{ false }}">
-            <div style="padding:12px 14px;font-size:13px;color:var(--color-neutral-700)">No section matches that. Try a concept — caching, idempotency, partitioning.</div>
+            <div style="padding:12px 14px;font-size:13px;color:var(--color-neutral-700)">Nothing matches those words. Try searching by meaning below.</div>
+          </sc-if>
+          <sc-if value="{{ hasSem }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:8px 14px 4px;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent);border-top:2px solid var(--color-divider);background:var(--color-surface)">By meaning</div>
+            <sc-for list="{{ semResults }}" as="r" hint-placeholder-count="2">
+              <div onClick="{{ r.go }}" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--color-neutral-300);background:var(--color-surface)" style-hover="background:var(--color-neutral-200)">
+                <div style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent)">{{ r.crumb }}</div>
+                <div style="font-family:var(--font-heading);font-weight:800;font-size:14px;line-height:1.25;margin-top:2px">{{ r.title }}</div>
+                <div style="font-size:12px;color:var(--color-neutral-700);line-height:1.4;margin-top:3px">{{ r.why }}</div>
+              </div>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{ semBusy }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:10px 14px;font-size:12px;color:var(--color-neutral-700);border-top:2px solid var(--color-divider)">Reading the contents…</div>
+          </sc-if>
+          <sc-if value="{{ semErr }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:10px 14px;font-size:12px;color:var(--color-neutral-700);border-top:2px solid var(--color-divider)">{{ semErr }}</div>
+          </sc-if>
+          <sc-if value="{{ canSemantic }}" hint-placeholder-val="{{ false }}">
+            <div onClick="{{ runSemantic }}" style="padding:10px 14px;cursor:pointer;font-size:12px;font-weight:800;font-family:var(--font-heading);color:var(--color-accent);border-top:2px solid var(--color-divider)" style-hover="background:var(--color-surface)">Search by meaning instead →</div>
           </sc-if>
         </div>
       </sc-if>
@@ -405,7 +424,7 @@ function snippet(text, terms) {
 }
 
 class Component extends DCLogic {
-  state = { tab: 'topics', chapter: 0, section: -1, mode: null, phase: 'idle', kase: null, answers: {}, result: null, picks: {}, notes: '', elapsed: 0, error: null, data: null, searchQ: '', searchSel: 0, progress: this.load() };
+  state = { tab: 'topics', chapter: 0, section: -1, mode: null, phase: 'idle', kase: null, answers: {}, result: null, picks: {}, notes: '', elapsed: 0, error: null, data: null, searchQ: '', searchSel: 0, semQ: null, semHits: null, semBusy: false, semErr: null, progress: this.load() };
   KEY = 'sdfg-progress-v1';
   MODES = [
     { id: 'seven', title: 'Seven kinds of case', sub: 'Answer each category, compare with the model', desc: 'Claude draws a system and a concrete brief. You write what happens on the happy path, the alternates, the edges, under concurrency, at scale, on failure and under abuse — then read the model answer beside yours, scored 0–3 per category.' },
@@ -560,6 +579,51 @@ class Component extends DCLogic {
     return out.slice(0, 8).map(({ e }) => ({ ...entries[e], snippet: snippet(entries[e].text, terms) }));
   }
 
+  // A compact catalogue of everything in the book, small enough to send in
+  // one request: each chapter with its tagline, then its sections by index.
+  catalogue() {
+    if (this._cat) return this._cat;
+    const { entries } = this.index();
+    const lines = [];
+    let lastCh = null;
+    entries.forEach((e, i) => {
+      if (e.ci !== lastCh) {
+        lastCh = e.ci;
+        const c = this.state.data.CHAPTERS[e.ci];
+        lines.push(`## ${c.num} ${c.title} — ${String(c.tagline || '').slice(0, 130)}`);
+      }
+      lines.push(`${i}\t${e.num}${e.si < 0 ? '' : '.' + (e.si + 1)} ${e.title}`);
+    });
+    return (this._cat = lines.join('\n'));
+  }
+  // Lexical search cannot match vocabulary the book does not literally use.
+  // This hands the question and the catalogue to the model instead. It runs
+  // only when asked, never while typing, because it costs a request.
+  async semanticSearch(q) {
+    const query = String(q || '').trim();
+    if (!query || !this.live()) return;
+    this.setState({ semBusy: true, semErr: null, semHits: null, semQ: query });
+    try {
+      const txt = await window.claude.complete({
+        system: 'You match a reader\'s question to sections of a system-design textbook. Reply with strict JSON only — no prose, no code fences.',
+        messages: [{ role: 'user', content: `Sections, as index then tab then label:\n${this.catalogue()}\n\nThe reader asked: "${query}"\n\nReturn the sections that genuinely answer it, best first, at most five. Prefer two precise matches over five loose ones. Return {"hits": [{"i": <index>, "why": "<at most 10 words on why this section answers it>"}]}. Return {"hits": []} if the book does not cover it.` }],
+        max_tokens: 900
+      });
+      const a = txt.indexOf('{'), b = txt.lastIndexOf('}');
+      const parsed = JSON.parse(txt.slice(a, b + 1));
+      // The box may have moved on while the request was in flight.
+      if (String(this.state.searchQ || '').trim() !== query) return;
+      const { entries } = this.index();
+      const hits = (parsed.hits || [])
+        .map(h => ({ ...entries[h.i], why: String(h.why || '') }))
+        .filter(h => h && h.title);
+      this.setState({ semBusy: false, semHits: hits });
+    } catch (err) {
+      if (String(this.state.searchQ || '').trim() !== query) return;
+      this.setState({ semBusy: false, semErr: 'Could not search by meaning just now.' });
+    }
+  }
+
   renderVals() {
     const S = this.state, D = S.data; const ACC = 'var(--color-accent)', INK = 'var(--color-text)', BG = 'var(--color-bg)';
     const chaptersRaw = D ? D.CHAPTERS : []; const isTopics = S.tab === 'topics'; const mode = this.mode();
@@ -602,6 +666,11 @@ class Component extends DCLogic {
     const hits = sq.trim().length > 1 ? this.runSearch(sq) : [];
     const sel = Math.max(0, Math.min(this.state.searchSel || 0, hits.length - 1));
     const openHit = h => { this.setState({ searchQ: '', searchSel: 0 }); go(h.ci, h.si); };
+    const semRaw = (this.state.semQ === sq.trim() && this.state.semHits) || [];
+    const semResults = semRaw.map(h => ({
+      crumb: `${h.num} · ${h.chapter}`, title: h.title, why: h.why,
+      go: () => openHit(h)
+    }));
     const searchResults = hits.map((h, i) => ({
       crumb: `${h.num} · ${h.chapter}`, title: h.title, snippet: h.snippet,
       bg: i === sel ? 'var(--color-surface)' : 'transparent',
@@ -611,10 +680,14 @@ class Component extends DCLogic {
     return {
       searchQ: sq, searchResults, searchOpen: sq.trim().length > 1,
       searchEmpty: sq.trim().length > 1 && !hits.length,
-      onSearch: e => this.setState({ searchQ: e.target.value, searchSel: 0 }),
+      canSemantic: this.live() && sq.trim().length > 1,
+      semBusy: this.state.semBusy, semErr: this.state.semErr,
+      semResults, hasSem: semResults.length > 0,
+      runSemantic: () => this.semanticSearch(sq),
+      onSearch: e => this.setState({ searchQ: e.target.value, searchSel: 0, semHits: null, semQ: null, semErr: null }),
       onSearchKey: e => {
         if (e.key === 'Escape') return this.setState({ searchQ: '', searchSel: 0 });
-        if (!hits.length) return;
+        if (!hits.length) { if (e.key === 'Enter') { e.preventDefault(); this.semanticSearch(sq); } return; }
         if (e.key === 'ArrowDown') { e.preventDefault(); this.setState({ searchSel: (sel + 1) % hits.length }); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); this.setState({ searchSel: (sel - 1 + hits.length) % hits.length }); }
         else if (e.key === 'Enter') { e.preventDefault(); openHit(hits[sel]); }
