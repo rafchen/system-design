@@ -1,0 +1,9 @@
+{
+  "name": "system-design-field-guide",
+  "private": true,
+  "type": "module",
+  "description": "Interactive system-design field guide. Static site plus one serverless route that powers live case-study generation and grading.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0"
+  }
+}
