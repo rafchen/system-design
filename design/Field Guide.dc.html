@@ -30,7 +30,7 @@ textarea{font:inherit}
 </style>
 </helmet>
 <div style="min-height:100vh;display:flex;flex-direction:column;font-family:var(--font-body)">
-  <header style="display:flex;align-items:center;gap:32px;padding:14px 32px;border-bottom:2px solid var(--color-divider);flex-wrap:wrap">
+  <header style="display:flex;align-items:center;gap:32px;padding:14px 32px;border-bottom:2px solid var(--color-divider);flex-wrap:wrap;position:relative;z-index:30">
     <div style="font-family:var(--font-heading);font-weight:800;font-size:18px;letter-spacing:-0.01em;margin-right:auto;display:flex;gap:10px;align-items:baseline">
       <span style="display:inline-block;width:12px;height:12px;background:var(--color-accent);transform:translateY(-1px)"></span>
       <span>Systems</span><span style="font-weight:400;color:var(--color-neutral-700)">a field guide</span>
@@ -39,6 +39,23 @@ textarea{font:inherit}
       <button onClick="{{ goTopics }}" style="padding:8px 18px;background:{{ topicsTabBg }};color:{{ topicsTabFg }};border:0;font:inherit;font-weight:800;font-size:14px;cursor:pointer;font-family:var(--font-heading)">Topics</button>
       <button onClick="{{ goCases }}" style="padding:8px 18px;background:{{ casesTabBg }};color:{{ casesTabFg }};border:0;border-left:1px solid var(--color-divider);font:inherit;font-weight:800;font-size:14px;cursor:pointer;font-family:var(--font-heading)">Case studies</button>
     </nav>
+    <div style="position:relative;flex:0 1 320px;min-width:180px">
+      <input class="input" value="{{ searchQ }}" onInput="{{ onSearch }}" onKeyDown="{{ onSearchKey }}" placeholder="Search the guide…" style="width:100%;font-size:14px" />
+      <sc-if value="{{ searchOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--color-bg);border:2px solid var(--color-divider);box-shadow:var(--shadow-lg);max-height:60vh;overflow-y:auto;z-index:40;min-width:320px">
+          <sc-for list="{{ searchResults }}" as="r" hint-placeholder-count="3">
+            <div onClick="{{ r.go }}" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--color-neutral-300);background:{{ r.bg }}" style-hover="background:var(--color-surface)">
+              <div style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent)">{{ r.crumb }}</div>
+              <div style="font-family:var(--font-heading);font-weight:800;font-size:14px;line-height:1.25;margin-top:2px">{{ r.title }}</div>
+              <div style="font-size:12px;color:var(--color-neutral-700);line-height:1.4;margin-top:3px">{{ r.snippet }}</div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ searchEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:12px 14px;font-size:13px;color:var(--color-neutral-700)">No section matches that. Try a concept — caching, idempotency, partitioning.</div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </div>
     <div style="display:flex;gap:28px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-700)">
       <div><span style="color:var(--color-text);font-weight:800;font-size:16px;letter-spacing:0;margin-right:6px">{{ streak }}</span>day streak</div>
       <div><span style="color:var(--color-text);font-weight:800;font-size:16px;letter-spacing:0;margin-right:6px">{{ masteryPct }}%</span>mastered</div>
@@ -323,8 +340,72 @@ textarea{font:inherit}
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;liveClaude&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Case studies&quot;},&quot;defaultMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;seven&quot;,&quot;options&quot;:[&quot;seven&quot;,&quot;product&quot;,&quot;mc&quot;,&quot;timed&quot;,&quot;ambiguity&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Case studies&quot;},&quot;showMarginalia&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Topics&quot;}}">
+const STOP = new Set('a an the and or of to in on for with is are be it its this that as at by from we you i if not do does when what which how why then than there their them these those into over under out up down about'.split(' '));
+
+// Crude suffix stripping. Enough to make "requirements" and "requirement",
+// or "partitioned" and "partition", land on the same token.
+function stem(t) {
+  if (t.length > 4) {
+    if (t.endsWith('ies')) return t.slice(0, -3) + 'y';
+    if (t.endsWith('sses')) return t.slice(0, -2);
+    if (t.endsWith('es') && t.length > 5) return t.slice(0, -2);
+    if (t.endsWith('s') && !t.endsWith('ss')) return t.slice(0, -1);
+    if (t.endsWith('ing') && t.length > 6) return t.slice(0, -3);
+    if (t.endsWith('ed') && t.length > 5) return t.slice(0, -2);
+  }
+  return t;
+}
+
+// Edit distance, abandoned as soon as it exceeds max — the whole vocabulary
+// is walked per query term, so the early exit is what keeps this instant.
+function lev(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (cur[j] < best) best = cur[j];
+    }
+    if (best > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+// Flatten one content block to plain text, whatever shape it is.
+function blockText(b) {
+  const v = b && b[1], out = [];
+  const push = x => { if (typeof x === 'string') out.push(x); };
+  if (typeof v === 'string') push(v);
+  else if (Array.isArray(v)) v.forEach(push);
+  else if (v && typeof v === 'object') {
+    if (v.cols) { v.cols.forEach(push); (v.rows || []).forEach(r => (r || []).forEach(push)); }
+    else {
+      ['name', 'problem', 'say', 'justify', 'tradeoff', 'fails', 'scale', 'nuance'].forEach(k => push(v[k]));
+      ['use', 'avoid', 'consider', 'alt', 'cases', 'real'].forEach(k => {
+        const f = v[k]; if (Array.isArray(f)) f.forEach(push); else push(f);
+      });
+    }
+  }
+  return out.join(' ');
+}
+
+// A window of text around the first term that actually occurs.
+function snippet(text, terms) {
+  const flat = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!flat) return '';
+  const low = flat.toLowerCase();
+  let at = -1;
+  for (const t of terms) { const i = low.indexOf(t); if (i > -1 && (at === -1 || i < at)) at = i; }
+  if (at === -1) return flat.slice(0, 130) + (flat.length > 130 ? '…' : '');
+  const start = Math.max(0, at - 45);
+  return (start ? '…' : '') + flat.slice(start, start + 150).trim() + (start + 150 < flat.length ? '…' : '');
+}
+
 class Component extends DCLogic {
-  state = { tab: 'topics', chapter: 0, section: -1, mode: null, phase: 'idle', kase: null, answers: {}, result: null, picks: {}, notes: '', elapsed: 0, error: null, data: null, progress: this.load() };
+  state = { tab: 'topics', chapter: 0, section: -1, mode: null, phase: 'idle', kase: null, answers: {}, result: null, picks: {}, notes: '', elapsed: 0, error: null, data: null, searchQ: '', searchSel: 0, progress: this.load() };
   KEY = 'sdfg-progress-v1';
   MODES = [
     { id: 'seven', title: 'Seven kinds of case', sub: 'Answer each category, compare with the model', desc: 'Claude draws a system and a concrete brief. You write what happens on the happy path, the alternates, the edges, under concurrency, at scale, on failure and under abuse — then read the model answer beside yours, scored 0–3 per category.' },
@@ -393,6 +474,92 @@ class Component extends DCLogic {
   }
   mode() { return this.state.mode || this.props.defaultMode || 'seven'; }
   cats() { const D = this.state.data; if (!D) return []; return this.mode() === 'product' ? D.PRODUCT_CATEGORIES : D.CATEGORIES; }
+  // ── Search ────────────────────────────────────────────────────────────
+  // An inverted index over every section, exactly as Chapter 11 describes:
+  // token -> the sections containing it, so a query is a lookup and a merge
+  // rather than a scan of 150,000 words. Typos are absorbed by falling back
+  // to prefix and bounded edit-distance matches over the vocabulary, and
+  // intent is widened by a small domain synonym map.
+  SYN = {
+    nfr: ['nonfunctional', 'requirement', 'latency', 'availability', 'durability', 'scalability'],
+    nonfunctional: ['requirement', 'latency', 'availability', 'durability', 'consistency', 'percentile'],
+    slow: ['latency', 'percentile', 'tail', 'p99', 'timeout'], speed: ['latency', 'throughput', 'percentile'],
+    fast: ['latency', 'cache', 'percentile'], crash: ['failure', 'reliability', 'timeout', 'retry', 'cascade'],
+    outage: ['failure', 'availability', 'cascade', 'incident'], down: ['availability', 'failure', 'degradation'],
+    duplicate: ['idempotency', 'idempotent', 'exactly', 'dedupe', 'retry'], twice: ['idempotency', 'duplicate', 'retry'],
+    split: ['partition', 'shard', 'sharding'], shard: ['partition', 'sharding', 'key'],
+    stale: ['cache', 'consistency', 'invalidation', 'ttl', 'replication'],
+    lock: ['concurrency', 'fencing', 'lease', 'transaction', 'isolation'],
+    race: ['concurrency', 'skew', 'isolation', 'atomic'],
+    queue: ['kafka', 'stream', 'log', 'consumer', 'partition', 'broker'],
+    auth: ['authentication', 'authorization', 'token', 'session', 'permission'],
+    login: ['authentication', 'session', 'token', 'password'],
+    money: ['payment', 'ledger', 'transaction', 'idempotency', 'consistency'],
+    search: ['index', 'inverted', 'autocomplete', 'ranking'],
+    feed: ['fanout', 'timeline', 'push', 'pull'], scale: ['scaling', 'partition', 'capacity', 'load'],
+    monitor: ['observability', 'metric', 'trace', 'log', 'alert'], monitoring: ['observability', 'metric', 'trace', 'alert'],
+    secure: ['security', 'authorization', 'encryption', 'tenant'], testing: ['reliability', 'postmortem'],
+    interview: ['framework', 'requirement', 'estimate', 'deep'], estimate: ['estimation', 'capacity', 'throughput']
+  };
+  tok(str) {
+    return String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ')
+      .filter(t => t.length > 1 && !STOP.has(t)).map(t => stem(t));
+  }
+  index() {
+    if (this._idx) return this._idx;
+    const chapters = (this.state.data && this.state.data.CHAPTERS) || [];
+    const entries = [], vocab = new Map();
+    const feed = (i, text, weight) => {
+      for (const t of this.tok(text)) {
+        let m = vocab.get(t); if (!m) vocab.set(t, m = new Map());
+        m.set(i, (m.get(i) || 0) + weight);
+      }
+    };
+    chapters.forEach((c, ci) => {
+      const head = `${c.num} ${c.title}`;
+      const oi = entries.length;
+      entries.push({ ci, si: -1, num: c.num, chapter: c.title, title: 'Chapter overview', text: `${c.tagline || ''} ${(c.terms || []).join(' ')} ${(c.objectives || []).join(' ')}` });
+      feed(oi, head, 6); feed(oi, c.tagline, 3); feed(oi, (c.terms || []).join(' '), 4); feed(oi, (c.objectives || []).join(' '), 2);
+      (c.sections || []).forEach((sec, si) => {
+        const i = entries.length, body = (sec.blocks || []).map(blockText).join(' ');
+        entries.push({ ci, si, num: c.num, chapter: c.title, title: sec.title, text: body });
+        feed(i, head, 2); feed(i, sec.title, 7); feed(i, body, 1);
+      });
+    });
+    return (this._idx = { entries, vocab });
+  }
+  runSearch(q) {
+    const terms = this.tok(q); if (!terms.length) return [];
+    const { entries, vocab } = this.index();
+    const score = new Map(), cover = new Map();
+    terms.forEach(qt => {
+      const hit = new Map();
+      const add = (m, mult) => { if (m) for (const [e, w] of m) hit.set(e, Math.max(hit.get(e) || 0, w * mult)); };
+      add(vocab.get(qt), 1);
+      (this.SYN[qt] || []).forEach(sy => add(vocab.get(stem(sy)), 0.5));
+      if (hit.size < 8) {
+        const max = qt.length <= 4 ? 0 : qt.length <= 7 ? 1 : 2;
+        for (const [t, m] of vocab) {
+          if (t === qt) continue;
+          if (qt.length >= 3 && t.startsWith(qt)) { add(m, 0.75); continue; }
+          if (max && Math.abs(t.length - qt.length) <= max && lev(t, qt, max) <= max) add(m, 0.6);
+        }
+      }
+      for (const [e, w] of hit) { score.set(e, (score.get(e) || 0) + w); cover.set(e, (cover.get(e) || 0) + 1); }
+    });
+    const phrase = String(q).toLowerCase().trim();
+    const out = [];
+    for (const [e, raw] of score) {
+      const ent = entries[e];
+      const cv = (cover.get(e) || 0) / terms.length;
+      let v = raw * (0.25 + 0.75 * cv * cv);
+      if (phrase.length > 4 && (ent.title + ' ' + ent.chapter + ' ' + ent.text).toLowerCase().includes(phrase)) v *= 1.8;
+      out.push({ e, v });
+    }
+    out.sort((a, b) => b.v - a.v);
+    return out.slice(0, 8).map(({ e }) => ({ ...entries[e], snippet: snippet(entries[e].text, terms) }));
+  }
+
   renderVals() {
     const S = this.state, D = S.data; const ACC = 'var(--color-accent)', INK = 'var(--color-text)', BG = 'var(--color-bg)';
     const chaptersRaw = D ? D.CHAPTERS : []; const isTopics = S.tab === 'topics'; const mode = this.mode();
@@ -431,7 +598,27 @@ class Component extends DCLogic {
     const left = Math.max(0, 40 * 60 - S.elapsed); const clock = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
     const dims = (D ? D.DIMENSIONS : []).map(label => { const ok = (R.covered || []).some(c => c.toLowerCase().startsWith(label.toLowerCase().slice(0, 5))); return { label, bg: ok ? INK : 'var(--color-neutral-200)', fg: ok ? BG : 'var(--color-neutral-700)' }; });
     const act = S.phase === 'active', res = S.phase === 'result';
+    const sq = this.state.searchQ || '';
+    const hits = sq.trim().length > 1 ? this.runSearch(sq) : [];
+    const sel = Math.max(0, Math.min(this.state.searchSel || 0, hits.length - 1));
+    const openHit = h => { this.setState({ searchQ: '', searchSel: 0 }); go(h.ci, h.si); };
+    const searchResults = hits.map((h, i) => ({
+      crumb: `${h.num} · ${h.chapter}`, title: h.title, snippet: h.snippet,
+      bg: i === sel ? 'var(--color-surface)' : 'transparent',
+      go: () => openHit(h)
+    }));
+
     return {
+      searchQ: sq, searchResults, searchOpen: sq.trim().length > 1,
+      searchEmpty: sq.trim().length > 1 && !hits.length,
+      onSearch: e => this.setState({ searchQ: e.target.value, searchSel: 0 }),
+      onSearchKey: e => {
+        if (e.key === 'Escape') return this.setState({ searchQ: '', searchSel: 0 });
+        if (!hits.length) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); this.setState({ searchSel: (sel + 1) % hits.length }); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); this.setState({ searchSel: (sel - 1 + hits.length) % hits.length }); }
+        else if (e.key === 'Enter') { e.preventDefault(); openHit(hits[sel]); }
+      },
       isTopics, isCases: !isTopics, goTopics: () => this.setState({ tab: 'topics' }), goCases: () => this.setState({ tab: 'cases' }),
       topicsTabBg: isTopics ? INK : 'transparent', topicsTabFg: isTopics ? BG : INK, casesTabBg: isTopics ? 'transparent' : INK, casesTabFg: isTopics ? INK : BG,
       streak: this.streak(), masteryPct, chapters, cur, blocks, ratings, quizLine, showMarginalia: this.props.showMarginalia ?? true,
