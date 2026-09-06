@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/modernist-ab1d264c-2a0f-45b7-85b8-c306c5666414/styles.css">
+<script src="_ds/modernist-ab1d264c-2a0f-45b7-85b8-c306c5666414/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#f3f2f2;color:#201e1d}
+a{color:#ae1800}a:hover{color:#ec3013}
+textarea{font:inherit}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column;font-family:var(--font-body)">
+  <header style="display:flex;align-items:center;gap:32px;padding:14px 32px;border-bottom:2px solid var(--color-divider);flex-wrap:wrap">
+    <div style="font-family:var(--font-heading);font-weight:800;font-size:18px;letter-spacing:-0.01em;margin-right:auto;display:flex;gap:10px;align-items:baseline">
+      <span style="display:inline-block;width:12px;height:12px;background:var(--color-accent);transform:translateY(-1px)"></span>
+      <span>Systems</span><span style="font-weight:400;color:var(--color-neutral-700)">a field guide</span>
+    </div>
+    <nav style="display:flex;gap:0;border:1px solid var(--color-divider)">
+      <button onClick="{{ goTopics }}" style="padding:8px 18px;background:{{ topicsTabBg }};color:{{ topicsTabFg }};border:0;font:inherit;font-weight:800;font-size:14px;cursor:pointer;font-family:var(--font-heading)">Topics</button>
+      <button onClick="{{ goCases }}" style="padding:8px 18px;background:{{ casesTabBg }};color:{{ casesTabFg }};border:0;border-left:1px solid var(--color-divider);font:inherit;font-weight:800;font-size:14px;cursor:pointer;font-family:var(--font-heading)">Case studies</button>
+    </nav>
+    <div style="display:flex;gap:28px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-700)">
+      <div><span style="color:var(--color-text);font-weight:800;font-size:16px;letter-spacing:0;margin-right:6px">{{ streak }}</span>day streak</div>
+      <div><span style="color:var(--color-text);font-weight:800;font-size:16px;letter-spacing:0;margin-right:6px">{{ masteryPct }}%</span>mastered</div>
+    </div>
+  </header>
+
+  <div style="display:flex;flex-wrap:wrap;flex:1;align-items:stretch">
+    <aside style="flex:0 0 272px;min-width:0;border-right:2px solid var(--color-divider);padding:28px 0 40px">
+      <sc-if value="{{ isTopics }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:0 24px 12px;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent)">Contents</div>
+        <sc-for list="{{ chapters }}" as="ch" hint-placeholder-count="15">
+          <div style="border-top:1px solid var(--color-neutral-300)">
+            <div onClick="{{ ch.select }}" style="display:grid;grid-template-columns:34px 1fr;gap:0 10px;padding:11px 24px;cursor:pointer;color:{{ ch.color }};background:{{ ch.bg }}" style-hover="background:var(--color-neutral-200)">
+              <div style="font-family:var(--font-heading);font-weight:800;font-size:13px;padding-top:1px">{{ ch.num }}</div>
+              <div style="font-size:14px;line-height:1.3">{{ ch.title }}</div>
+              <div style="grid-column:2;margin-top:8px;height:2px;background:var(--color-neutral-300);position:relative"><div style="position:absolute;inset:0 auto 0 0;background:var(--color-text);width:{{ ch.masteryW }}"></div></div>
+            </div>
+            <sc-if value="{{ ch.open }}">
+              <div style="padding:2px 0 10px;background:var(--color-surface)">
+                <sc-for list="{{ ch.sections }}" as="s" hint-placeholder-count="6">
+                  <div onClick="{{ s.select }}" style="display:grid;grid-template-columns:34px 1fr;gap:0 10px;padding:6px 24px;cursor:pointer;font-size:13px;line-height:1.35;color:{{ s.color }};font-weight:{{ s.weight }}" style-hover="color:var(--color-accent)"><span style="font-size:11px;color:var(--color-neutral-600);padding-top:2px">{{ s.n }}</span><span>{{ s.title }}</span></div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <div style="border-top:1px solid var(--color-neutral-300)"></div>
+      </sc-if>
+      <sc-if value="{{ isCases }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:0 24px 12px;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent)">Formats</div>
+        <sc-for list="{{ modes }}" as="m" hint-placeholder-count="4">
+          <div onClick="{{ m.select }}" style="padding:12px 24px;cursor:pointer;border-top:1px solid var(--color-neutral-300);color:{{ m.color }};background:{{ m.bg }}" style-hover="background:var(--color-neutral-200)">
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:14px">{{ m.title }}</div>
+            <div style="font-size:12px;color:var(--color-neutral-700);margin-top:2px">{{ m.sub }}</div>
+          </div>
+        </sc-for>
+        <div style="border-top:1px solid var(--color-neutral-300);padding:20px 24px">
+          <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:10px">Record</div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:13px">
+            <div style="color:var(--color-neutral-700)">Cases completed</div><div style="font-weight:800">{{ sessions }}</div>
+            <div style="color:var(--color-neutral-700)">Days practised</div><div style="font-weight:800">{{ daysPractised }}</div>
+            <div style="color:var(--color-neutral-700)">Weakest chapter</div><div style="font-weight:800;text-align:right">{{ weakest }}</div>
+          </div>
+        </div>
+      </sc-if>
+    </aside>
+
+    <main style="flex:1 1 560px;min-width:0">
+      <sc-if value="{{ isTopics }}" hint-placeholder-val="{{ true }}">
+        <article style="max-width:960px;padding:36px 56px 72px">
+          <div style="display:flex;justify-content:space-between;gap:16px;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700);padding-bottom:10px;border-bottom:2px solid var(--color-text)">
+            <div>Chapter {{ cur.num }} · {{ cur.title }}</div><div style="white-space:nowrap">{{ pageLabel }}</div>
+          </div>
+
+          <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:clamp(96px,14vw,168px);line-height:0.85;letter-spacing:-0.05em;color:var(--color-accent);margin:40px 0 8px -6px">{{ cur.num }}</div>
+            <h1 style="font-size:clamp(34px,4.5vw,52px);line-height:1.02;letter-spacing:-0.025em;margin:0 0 18px;max-width:18ch;text-wrap:pretty">{{ cur.title }}</h1>
+            <p style="font-size:20px;line-height:1.45;color:var(--color-neutral-800);max-width:48ch;margin:0 0 36px;text-wrap:pretty">{{ cur.tagline }}</p>
+            <div style="height:2px;background:var(--color-divider);margin-bottom:36px"></div>
+            <div style="display:flex;flex-wrap:wrap;gap:40px 56px;align-items:flex-start">
+              <div style="flex:1 1 420px;min-width:0;max-width:66ch">
+                <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:10px">After reading this chapter, you should be able to</div>
+                <ul style="margin:0 0 40px;padding:0;list-style:none;border-top:1px solid var(--color-neutral-300)"><sc-for list="{{ cur.objectives }}" as="o" hint-placeholder-count="5"><li style="font-size:16px;line-height:1.55;padding:10px 0 10px 22px;border-bottom:1px solid var(--color-neutral-300);position:relative;text-wrap:pretty"><span style="position:absolute;left:2px;top:19px;width:7px;height:7px;background:var(--color-accent)"></span>{{ o }}</li></sc-for></ul>
+                <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:10px">Sections</div>
+                <div style="border-top:2px solid var(--color-text)">
+                  <sc-for list="{{ sectionList }}" as="s" hint-placeholder-count="7">
+                    <div onClick="{{ s.select }}" style="display:grid;grid-template-columns:44px 1fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--color-neutral-300);cursor:pointer;align-items:baseline" style-hover="color:var(--color-accent)"><span style="font-family:var(--font-heading);font-weight:800;font-size:13px;color:var(--color-neutral-600)">{{ s.n }}</span><span style="font-family:var(--font-heading);font-weight:800;font-size:18px;line-height:1.25">{{ s.title }}</span></div>
+                  </sc-for>
+                </div>
+              </div>
+              <aside style="flex:0 1 200px">
+                <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);border-bottom:2px solid var(--color-text);padding-bottom:8px;margin-bottom:10px">Running example</div>
+                <div style="font-size:15px;line-height:1.45;font-weight:800;font-family:var(--font-heading)">{{ cur.example }}</div>
+                <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);border-bottom:2px solid var(--color-text);padding-bottom:8px;margin:28px 0 4px">Know cold</div>
+                <sc-for list="{{ cur.terms }}" as="t" hint-placeholder-count="6"><div style="font-size:13px;padding:8px 0;border-bottom:1px solid var(--color-neutral-300)">{{ t }}</div></sc-for>
+              </aside>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isSection }}">
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:13px;letter-spacing:0.02em;color:var(--color-accent);margin:40px 0 10px">Section {{ sec.n }}</div>
+          <h1 style="font-size:clamp(30px,4vw,44px);line-height:1.05;letter-spacing:-0.025em;margin:0 0 32px;max-width:22ch;text-wrap:pretty">{{ sec.title }}</h1>
+          <div style="height:2px;background:var(--color-divider);margin-bottom:36px"></div>
+          <div style="display:flex;flex-wrap:wrap;gap:40px 56px;align-items:flex-start">
+            <div style="flex:1 1 420px;min-width:0;max-width:66ch">
+              <sc-for list="{{ blocks }}" as="b" hint-placeholder-count="8">
+                <sc-if value="{{ b.isH }}"><h3 style="font-size:23px;letter-spacing:-0.015em;margin:40px 0 12px;line-height:1.15">{{ b.text }}</h3></sc-if>
+                <sc-if value="{{ b.isP }}" hint-placeholder-val="{{ true }}"><p style="font-size:17px;line-height:1.68;margin:0 0 18px;text-wrap:pretty">{{ b.text }}</p></sc-if>
+                <sc-if value="{{ b.isUl }}"><ul style="margin:0 0 20px;padding:0;list-style:none;border-top:1px solid var(--color-neutral-300)"><sc-for list="{{ b.items }}" as="it" hint-placeholder-count="3"><li style="font-size:16px;line-height:1.55;padding:10px 0 10px 22px;border-bottom:1px solid var(--color-neutral-300);position:relative;text-wrap:pretty"><span style="position:absolute;left:2px;top:19px;width:7px;height:7px;background:var(--color-accent)"></span>{{ it }}</li></sc-for></ul></sc-if>
+                <sc-if value="{{ b.isT }}"><div style="background:var(--color-surface);padding:18px 22px 20px;margin:8px 0 26px;border-top:2px solid var(--color-accent)"><div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent-700);margin-bottom:6px;font-weight:800">Tradeoff</div><div style="font-size:16px;line-height:1.6;text-wrap:pretty">{{ b.text }}</div></div></sc-if>
+                <sc-if value="{{ b.isEx }}"><pre style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;line-height:1.6;background:var(--color-neutral-900);color:var(--color-neutral-100);padding:18px 22px;margin:8px 0 26px;white-space:pre-wrap;overflow-wrap:anywhere">{{ b.text }}</pre></sc-if>
+                <sc-if value="{{ b.isTbl }}">
+                  <div style="margin:8px 0 28px;overflow-x:auto">
+                    <table style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.45">
+                      <thead><tr><sc-for list="{{ b.cols }}" as="c" hint-placeholder-count="3"><th style="text-align:left;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent);padding:0 12px 8px 0;border-bottom:2px solid var(--color-text);font-weight:800">{{ c }}</th></sc-for></tr></thead>
+                      <tbody><sc-for list="{{ b.rows }}" as="r" hint-placeholder-count="4"><tr><sc-for list="{{ r }}" as="cell" hint-placeholder-count="3"><td style="padding:10px 12px 10px 0;border-bottom:1px solid var(--color-neutral-300);vertical-align:top;text-wrap:pretty">{{ cell }}</td></sc-for></tr></sc-for></tbody>
+                    </table>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ b.isCard }}">
+                  <div style="margin:8px 0 28px;border-top:2px solid var(--color-text)">
+                    <div style="font-family:var(--font-heading);font-weight:800;font-size:20px;letter-spacing:-0.015em;padding:14px 0 4px">{{ b.card.name }}</div>
+                    <div style="font-size:15px;line-height:1.5;color:var(--color-neutral-800);padding-bottom:12px;text-wrap:pretty">{{ b.card.problem }}</div>
+                    <div style="display:grid;grid-template-columns:110px minmax(0,1fr);font-size:14px;line-height:1.5">
+                      <sc-for list="{{ b.card.rows }}" as="cr" hint-placeholder-count="8">
+                        <div style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:{{ cr.color }};font-weight:800;padding:9px 12px 9px 0;border-top:1px solid var(--color-neutral-300)">{{ cr.k }}</div>
+                        <div style="padding:8px 0;border-top:1px solid var(--color-neutral-300);text-wrap:pretty;font-style:{{ cr.italic }}">
+                          <sc-if value="{{ cr.hasText }}" hint-placeholder-val="{{ true }}">{{ cr.v }}</sc-if>
+                          <sc-if value="{{ cr.hasItems }}"><ul style="margin:0;padding:0;list-style:none"><sc-for list="{{ cr.items }}" as="li" hint-placeholder-count="3"><li style="padding:2px 0 2px 16px;position:relative"><span style="position:absolute;left:0;top:10px;width:6px;height:6px;background:var(--color-accent)"></span>{{ li }}</li></sc-for></ul></sc-if>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+              </sc-for>
+            </div>
+            <sc-if value="{{ showMarginalia }}" hint-placeholder-val="{{ true }}">
+              <aside style="flex:0 1 200px;position:sticky;top:24px">
+                <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);border-bottom:2px solid var(--color-text);padding-bottom:8px;margin-bottom:4px">Know cold</div>
+                <sc-for list="{{ cur.terms }}" as="t" hint-placeholder-count="6"><div style="font-size:13px;padding:8px 0;border-bottom:1px solid var(--color-neutral-300)">{{ t }}</div></sc-for>
+                <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);border-bottom:2px solid var(--color-text);padding-bottom:8px;margin:28px 0 4px">In this chapter</div>
+                <sc-for list="{{ sectionList }}" as="s" hint-placeholder-count="6"><div onClick="{{ s.select }}" style="font-size:13px;padding:7px 0;border-bottom:1px solid var(--color-neutral-300);cursor:pointer;color:{{ s.color }};font-weight:{{ s.weight }}" style-hover="color:var(--color-accent)">{{ s.title }}</div></sc-for>
+              </aside>
+            </sc-if>
+          </div>
+          </sc-if>
+
+          <div style="height:2px;background:var(--color-divider);margin:56px 0 24px"></div>
+          <div style="display:flex;flex-wrap:wrap;gap:20px 40px;align-items:flex-end;justify-content:space-between">
+            <div>
+              <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:10px">Rate your understanding</div>
+              <div style="display:inline-flex;border:1px solid var(--color-divider)">
+                <sc-for list="{{ ratings }}" as="r" hint-placeholder-count="4"><button onClick="{{ r.pick }}" style="padding:8px 14px;border:0;border-left:1px solid var(--color-divider);margin-left:-1px;font:inherit;font-size:13px;cursor:pointer;background:{{ r.bg }};color:{{ r.fg }}">{{ r.label }}</button></sc-for>
+              </div>
+            </div>
+            <div style="font-size:13px;color:var(--color-neutral-700)">{{ quizLine }}</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:24px;margin-top:40px;border-top:2px solid var(--color-text);padding-top:16px">
+            <sc-if value="{{ hasPrev }}"><a onClick="{{ goPrev }}" style="cursor:pointer;text-decoration:none;color:var(--color-text);font-family:var(--font-heading);font-weight:800;font-size:15px;line-height:1.3"><div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-neutral-700);font-weight:400">← Previous</div>{{ prevTitle }}</a></sc-if>
+            <sc-if value="{{ hasNext }}" hint-placeholder-val="{{ true }}"><a onClick="{{ goNext }}" style="cursor:pointer;text-decoration:none;color:var(--color-text);font-family:var(--font-heading);font-weight:800;font-size:15px;line-height:1.3;text-align:right;margin-left:auto"><div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-neutral-700);font-weight:400">Next →</div>{{ nextTitle }}</a></sc-if>
+          </div>
+        </article>
+      </sc-if>
+
+      <sc-if value="{{ isCases }}" hint-placeholder-val="{{ false }}">
+        <section style="max-width:1100px;padding:36px 56px 72px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700);padding-bottom:10px;border-bottom:2px solid var(--color-text)">
+            <div>Case studies · {{ modeTitle }}</div><div>{{ liveLabel }}</div>
+          </div>
+
+          <sc-if value="{{ isIdle }}" hint-placeholder-val="{{ true }}">
+            <h1 style="font-size:clamp(34px,4.5vw,52px);line-height:1.02;letter-spacing:-0.025em;margin:40px 0 18px;max-width:18ch">{{ modeTitle }}</h1>
+            <p style="font-size:20px;line-height:1.45;color:var(--color-neutral-800);max-width:48ch;margin:0 0 32px;text-wrap:pretty">{{ modeDesc }}</p>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+              <button class="btn btn-primary" onClick="{{ draw }}" style="padding:12px 20px;font-size:15px;justify-content:flex-start">Draw a new case →</button>
+              <sc-if value="{{ hasError }}"><span style="font-size:13px;color:var(--color-accent-700)">{{ error }}</span></sc-if>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isLoading }}">
+            <div style="padding:80px 0;font-family:var(--font-heading);font-weight:800;font-size:28px;letter-spacing:-0.02em"><span style="display:inline-block;width:14px;height:14px;background:var(--color-accent);margin-right:14px;animation:blink 1s infinite"></span>{{ loadingText }}</div>
+          </sc-if>
+
+          <sc-if value="{{ hasCase }}">
+            <div style="margin:40px 0 0;display:flex;flex-wrap:wrap;gap:24px 48px;align-items:flex-start;padding-bottom:28px;border-bottom:2px solid var(--color-divider)">
+              <div style="flex:1 1 420px;min-width:0">
+                <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">The prompt</div>
+                <h1 style="font-size:clamp(30px,4vw,44px);line-height:1.05;letter-spacing:-0.025em;margin:0 0 14px">{{ kase.system }}</h1>
+                <p style="font-size:17px;line-height:1.6;margin:0;max-width:60ch;text-wrap:pretty">{{ kase.brief }}</p>
+                <sc-if value="{{ kase.invariant }}"><p style="font-size:14px;margin:14px 0 0;color:var(--color-neutral-800)"><span style="font-weight:800;color:var(--color-accent-700)">Invariant · </span>{{ kase.invariant }}</p></sc-if>
+              </div>
+              <div style="flex:0 1 220px">
+                <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">Draws on</div>
+                <sc-for list="{{ kaseChapters }}" as="c" hint-placeholder-count="2"><div onClick="{{ c.open }}" style="font-size:13px;padding:7px 0;border-bottom:1px solid var(--color-neutral-300);cursor:pointer;display:flex;gap:10px" style-hover="color:var(--color-accent)"><span style="font-weight:800">{{ c.num }}</span>{{ c.title }}</div></sc-for>
+                <sc-if value="{{ isTimed }}">
+                  <div style="margin-top:20px;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:4px">Clock</div>
+                  <div style="font-family:var(--font-heading);font-weight:800;font-size:44px;letter-spacing:-0.03em;line-height:1">{{ clock }}</div>
+                  <div style="font-size:13px;margin-top:4px;color:var(--color-neutral-800)">{{ phaseLabel }}</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ sevenActive }}">
+            <sc-for list="{{ cats }}" as="c" hint-placeholder-count="7">
+              <div style="display:flex;flex-wrap:wrap;gap:8px 40px;padding:24px 0;border-bottom:1px solid var(--color-neutral-300)">
+                <div style="flex:0 1 220px"><div style="font-family:var(--font-heading);font-weight:800;font-size:17px">{{ c.label }}</div><div style="font-size:13px;color:var(--color-neutral-700);margin-top:4px;text-wrap:pretty">{{ c.hint }}</div></div>
+                <textarea class="input" value="{{ c.value }}" onChange="{{ c.onChange }}" placeholder="Your answer…" style="flex:1 1 380px;min-height:96px;font-size:14.5px;line-height:1.5;padding:10px 12px"></textarea>
+              </div>
+            </sc-for>
+            <div style="display:flex;gap:12px;align-items:center;margin-top:24px;flex-wrap:wrap"><button class="btn btn-primary" onClick="{{ submit }}" style="padding:12px 20px;font-size:15px">Compare with model answer →</button><button class="btn btn-secondary" onClick="{{ reset }}">Discard</button><sc-if value="{{ hasError }}"><span style="font-size:13px;color:var(--color-accent-700)">{{ error }}</span></sc-if></div>
+          </sc-if>
+
+          <sc-if value="{{ sevenResult }}">
+            <div style="display:flex;justify-content:space-between;gap:24px;align-items:baseline;margin-top:28px;flex-wrap:wrap">
+              <div style="font-family:var(--font-heading);font-weight:800;font-size:28px;letter-spacing:-0.02em">Score <span style="color:var(--color-accent)">{{ result.total }}</span> / {{ result.max }}</div>
+              <div style="font-size:13px;color:var(--color-neutral-700)">Mastery updated for the chapters above</div>
+            </div>
+            <div style="height:2px;background:var(--color-text);margin-top:20px"></div>
+            <sc-for list="{{ gradedCats }}" as="g" hint-placeholder-count="7">
+              <div style="padding:22px 0;border-bottom:1px solid var(--color-neutral-300)">
+                <div style="display:flex;gap:14px;align-items:baseline;margin-bottom:12px;flex-wrap:wrap"><div style="font-family:var(--font-heading);font-weight:800;font-size:17px">{{ g.label }}</div><div style="display:flex;gap:3px"><sc-for list="{{ g.pips }}" as="p" hint-placeholder-count="3"><span style="width:10px;height:10px;display:inline-block;background:{{ p }}"></span></sc-for></div><div style="font-size:13px;color:var(--color-neutral-700)">{{ g.note }}</div></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px 40px">
+                  <div><div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-neutral-700);margin-bottom:6px">Yours</div><div style="font-size:15px;line-height:1.6;white-space:pre-wrap;color:var(--color-neutral-800)">{{ g.yours }}</div></div>
+                  <div><div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:6px">Model answer</div><div style="font-size:15px;line-height:1.6;text-wrap:pretty">{{ g.model }}</div></div>
+                </div>
+              </div>
+            </sc-for>
+            <div style="display:flex;gap:12px;margin-top:28px"><button class="btn btn-primary" onClick="{{ draw }}" style="padding:12px 20px;font-size:15px">Draw another →</button><button class="btn btn-secondary" onClick="{{ reset }}">Back</button></div>
+          </sc-if>
+
+          <sc-if value="{{ mcActive }}">
+            <sc-for list="{{ mcQs }}" as="q" hint-placeholder-count="5">
+              <div style="padding:26px 0;border-bottom:1px solid var(--color-neutral-300)">
+                <div style="display:flex;gap:16px;align-items:baseline;margin-bottom:14px"><span style="font-family:var(--font-heading);font-weight:800;color:var(--color-accent)">{{ q.n }}</span><div style="font-family:var(--font-heading);font-weight:800;font-size:18px;line-height:1.3;text-wrap:pretty">{{ q.q }}</div></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px">
+                  <sc-for list="{{ q.opts }}" as="o" hint-placeholder-count="4"><button onClick="{{ o.pick }}" style="text-align:left;padding:12px 14px;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }};font:inherit;font-size:14.5px;line-height:1.4;cursor:pointer">{{ o.text }}</button></sc-for>
+                </div>
+                <sc-if value="{{ q.why }}"><div style="margin-top:12px;font-size:14px;line-height:1.55;color:var(--color-neutral-800);border-top:2px solid var(--color-accent);padding-top:10px;max-width:70ch"><span style="font-weight:800;color:var(--color-accent-700)">{{ q.verdict }} · </span>{{ q.why }}</div></sc-if>
+              </div>
+            </sc-for>
+            <div style="display:flex;gap:12px;align-items:center;margin-top:24px;flex-wrap:wrap">
+              <sc-if value="{{ mcUngraded }}"><button class="btn btn-primary" onClick="{{ submit }}" style="padding:12px 20px;font-size:15px">Check answers →</button></sc-if>
+              <sc-if value="{{ mcGraded }}"><div style="font-family:var(--font-heading);font-weight:800;font-size:28px;letter-spacing:-0.02em;margin-right:12px"><span style="color:var(--color-accent)">{{ mcScore }}</span> / {{ mcTotal }}</div><button class="btn btn-primary" onClick="{{ draw }}" style="padding:12px 20px;font-size:15px">Draw another →</button></sc-if>
+              <button class="btn btn-secondary" onClick="{{ reset }}">Discard</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ timedActive }}">
+            <div style="display:flex;flex-wrap:wrap;gap:24px 48px;margin-top:24px;align-items:flex-start">
+              <div style="flex:0 1 220px">
+                <sc-for list="{{ phases }}" as="ph" hint-placeholder-count="5"><div style="display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--color-neutral-300);font-size:14px;color:{{ ph.color }};font-weight:{{ ph.weight }}"><span>{{ ph.label }}</span><span style="color:var(--color-neutral-700)">{{ ph.minutes }} min</span></div></sc-for>
+              </div>
+              <div style="flex:1 1 420px;min-width:0">
+                <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">Your notes — talk aloud, type the skeleton</div>
+                <textarea class="input" value="{{ notes }}" onChange="{{ setNotes }}" placeholder="Requirements… estimates… API… design… deep dives… bottlenecks…" style="min-height:360px;font-size:14.5px;line-height:1.55;padding:12px 14px"></textarea>
+                <div style="display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap"><button class="btn btn-primary" onClick="{{ submit }}" style="padding:12px 20px;font-size:15px">Finish and compare →</button><button class="btn btn-secondary" onClick="{{ reset }}">Discard</button><sc-if value="{{ hasError }}"><span style="font-size:13px;color:var(--color-accent-700)">{{ error }}</span></sc-if></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ timedResult }}">
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:28px;letter-spacing:-0.02em;margin-top:28px">Model walk-through</div>
+            <sc-if value="{{ result.note }}"><p style="font-size:15px;line-height:1.6;max-width:70ch;margin:10px 0 0;color:var(--color-neutral-800);text-wrap:pretty">{{ result.note }}</p></sc-if>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0 48px;margin-top:24px">
+              <div><div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);padding-bottom:8px;border-bottom:2px solid var(--color-text)">Yours</div><div style="font-size:14.5px;line-height:1.6;white-space:pre-wrap;padding-top:16px;color:var(--color-neutral-800)">{{ notes }}</div></div>
+              <div><div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);padding-bottom:8px;border-bottom:2px solid var(--color-text)">Model</div>
+                <sc-for list="{{ result.model }}" as="m" hint-placeholder-count="5"><div style="padding:16px 0;border-bottom:1px solid var(--color-neutral-300)"><div style="font-family:var(--font-heading);font-weight:800;font-size:15px;margin-bottom:6px">{{ m.phase }}</div><div style="font-size:14.5px;line-height:1.6;text-wrap:pretty">{{ m.text }}</div></div></sc-for>
+              </div>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:28px"><button class="btn btn-primary" onClick="{{ draw }}" style="padding:12px 20px;font-size:15px">Draw another →</button><button class="btn btn-secondary" onClick="{{ reset }}">Back</button></div>
+          </sc-if>
+
+          <sc-if value="{{ ambActive }}">
+            <div style="margin-top:24px;max-width:760px">
+              <div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:8px">The clarifying questions you would ask — one per line</div>
+              <textarea class="input" value="{{ notes }}" onChange="{{ setNotes }}" placeholder="Who are the users? Which two or three workflows matter most?…" style="min-height:220px;font-size:14.5px;line-height:1.55;padding:12px 14px"></textarea>
+              <div style="display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap"><button class="btn btn-primary" onClick="{{ submit }}" style="padding:12px 20px;font-size:15px">Score my questions →</button><button class="btn btn-secondary" onClick="{{ reset }}">Discard</button><sc-if value="{{ hasError }}"><span style="font-size:13px;color:var(--color-accent-700)">{{ error }}</span></sc-if></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ ambResult }}">
+            <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:baseline;margin-top:28px">
+              <div style="font-family:var(--font-heading);font-weight:800;font-size:28px;letter-spacing:-0.02em"><span style="color:var(--color-accent)">{{ result.covered.length }}</span> / 5 dimensions</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ dims }}" as="d" hint-placeholder-count="5"><span style="font-size:12px;padding:4px 10px;background:{{ d.bg }};color:{{ d.fg }}">{{ d.label }}</span></sc-for></div>
+            </div>
+            <sc-if value="{{ result.note }}"><p style="font-size:15px;line-height:1.6;max-width:70ch;margin:14px 0 0;color:var(--color-neutral-800);text-wrap:pretty">{{ result.note }}</p></sc-if>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0 48px;margin-top:24px">
+              <div><div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);padding-bottom:8px;border-bottom:2px solid var(--color-text)">Yours</div><div style="font-size:14.5px;line-height:1.6;white-space:pre-wrap;padding-top:16px;color:var(--color-neutral-800)">{{ notes }}</div></div>
+              <div><div style="font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent);padding-bottom:8px;border-bottom:2px solid var(--color-text)">Model questions</div>
+                <sc-for list="{{ result.model }}" as="m" hint-placeholder-count="5"><div style="padding:14px 0;border-bottom:1px solid var(--color-neutral-300)"><div style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700);margin-bottom:4px">{{ m.dim }}</div><div style="font-size:14.5px;line-height:1.55;text-wrap:pretty">{{ m.q }}</div></div></sc-for>
+              </div>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:28px"><button class="btn btn-primary" onClick="{{ draw }}" style="padding:12px 20px;font-size:15px">Draw another →</button><button class="btn btn-secondary" onClick="{{ reset }}">Back</button></div>
+          </sc-if>
+        </section>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;liveClaude&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Case studies&quot;},&quot;defaultMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;seven&quot;,&quot;options&quot;:[&quot;seven&quot;,&quot;product&quot;,&quot;mc&quot;,&quot;timed&quot;,&quot;ambiguity&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Case studies&quot;},&quot;showMarginalia&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Topics&quot;}}">
+class Component extends DCLogic {
+  state = { tab: 'topics', chapter: 0, section: -1, mode: null, phase: 'idle', kase: null, answers: {}, result: null, picks: {}, notes: '', elapsed: 0, error: null, data: null, progress: this.load() };
+  KEY = 'sdfg-progress-v1';
+  MODES = [
+    { id: 'seven', title: 'Seven kinds of case', sub: 'Answer each category, compare with the model', desc: 'Claude draws a system and a concrete brief. You write what happens on the happy path, the alternates, the edges, under concurrency, at scale, on failure and under abuse — then read the model answer beside yours, scored 0–3 per category.' },
+    { id: 'mc', title: 'Multiple choice', sub: 'Five questions on a generated scenario', desc: 'A generated scenario and five questions with one defensible answer each. Every answer comes with the reasoning, so a wrong pick still teaches the tradeoff.' },
+    { id: 'timed', title: 'Timed mock', sub: '40 minutes on the interview shape', desc: 'A full prompt and a running clock on the five-phase shape: 5 minutes requirements, 5 estimation and API, 10 high-level design, 15 deep dives, 5 bottlenecks. Type your skeleton as you talk; compare with a model walk-through when the clock stops.' },
+    { id: 'product', title: 'Product design', sub: 'Small-scale, feature-shaped prompts', desc: 'A Palantir- or Stripe-style prompt: design a small internal product — a meetup matcher, an expense approver, a lunch-ordering tool. No scale problem to hide behind. You answer scope, data model, algorithm, API, interface and a one-minute scalability nod; Claude shows a model answer beside each, scored 0–3.' },
+    { id: 'ambiguity', title: 'Ambiguity drill', sub: 'Write clarifying questions, get them scored', desc: 'A deliberately vague prompt — “Design YouTube.” Write the questions you would ask before drawing anything. Claude checks which of the five dimensions of ambiguity you covered and shows the questions a strong candidate asks.' }
+  ];
+  load() { try { return JSON.parse(localStorage.getItem('sdfg-progress-v1')) || { self: {}, quiz: {}, days: [], sessions: 0 }; } catch (e) { return { self: {}, quiz: {}, days: [], sessions: 0 }; } }
+  save(p) { localStorage.setItem(this.KEY, JSON.stringify(p)); this.setState({ progress: p }); }
+  componentDidMount() { import('./content.js').then(m => this.setState({ data: m })); }
+  componentWillUnmount() { clearInterval(this.timer); }
+  today() { return new Date().toISOString().slice(0, 10); }
+  markDay(p) { const d = this.today(); if (!p.days.includes(d)) p.days = [...p.days, d]; return p; }
+  streak() { const days = new Set(this.state.progress.days); let n = 0; const d = new Date(); if (!days.has(d.toISOString().slice(0, 10))) d.setDate(d.getDate() - 1); while (days.has(d.toISOString().slice(0, 10))) { n++; d.setDate(d.getDate() - 1); } return n; }
+  mastery(id) { const p = this.state.progress; const s = p.self[id]; const q = p.quiz[id]; const sp = s == null ? null : s / 3; const qp = q && q.length ? q.reduce((a, b) => a + b, 0) / q.length : null; if (sp == null && qp == null) return 0; if (sp == null) return qp; if (qp == null) return sp; return (sp + qp) / 2; }
+  recordQuiz(pct) { const p = { ...this.state.progress, quiz: { ...this.state.progress.quiz } }; (this.state.kase.sections || []).forEach(id => { p.quiz[id] = [...(p.quiz[id] || []), pct].slice(-10); }); p.sessions = (p.sessions || 0) + 1; this.save(this.markDay(p)); }
+  live() { return (this.props.liveClaude ?? true) && window.claude && window.claude.complete; }
+  async ask(prompt, max) {
+    const txt = await window.claude.complete({ system: 'You are a senior engineer running system-design interview practice. Model answers must be decision-shaped, never definitional: name the mechanism, when to use it, when not to, the alternative rejected, the tradeoff accepted, and how it fails. Respond with strict JSON only — no prose, no code fences.', messages: [{ role: 'user', content: prompt }], max_tokens: max || 3000 });
+    const s = txt.indexOf('{'), e = txt.lastIndexOf('}'); return JSON.parse(txt.slice(s, e + 1));
+  }
+  ids() { return this.state.data.CHAPTERS.map(c => c.id).join(', '); }
+  async draw() {
+    const mode = this.mode(); const M = this.state.data.MOCK; clearInterval(this.timer);
+    this.setState({ phase: 'loading', error: null, answers: {}, picks: {}, notes: '', result: null, elapsed: 0 });
+    try {
+      let kase;
+      if (!this.live()) { await new Promise(r => setTimeout(r, 700)); kase = { seven: M.sevenCase, mc: M.mc, timed: M.mock, ambiguity: M.ambiguity, product: M.product }[mode]; }
+      else {
+        const prev = this.state.kase ? ` Do not pick ${this.state.kase.system}.` : '';
+        const sec = `"sections": 2 to 4 ids most relevant to this case, chosen from [${this.ids()}]`;
+        if (mode === 'seven') kase = await this.ask(`Create a system-design practice case about a well-known product or infrastructure system, mixing difficulty.${prev} Return {"system": short name, "brief": 2-3 sentences with a concrete scenario and scale, "invariant": the single most important invariant, ${sec}}.`);
+        else if (mode === 'mc') kase = await this.ask(`Create a system-design multiple-choice quiz.${prev} Return {"system", "scenario": 2 sentences, ${sec}, "questions": exactly 5 items of {"q", "options": 4 strings, "answer": index 0-3, "why": one or two sentences explaining the tradeoff}}. Vary the correct index.`);
+        else if (mode === 'product') kase = await this.ask(`Create a product-shaped design interview prompt: a small internal tool or feature for a company (a few thousand users, no scale problem) where the interviewer wants database design, a core algorithm, a REST API and an interface — e.g. an employee meetup matcher, a desk-booking tool, an on-call rotation planner, an expense approver.${prev} Return {"system": short name, "brief": 2-3 sentences stating the product and the focus areas, "invariant": the one thing that must never happen, ${sec}}.`);
+        else if (mode === 'timed') kase = await this.ask(`Create a 40-minute system-design mock interview prompt.${prev} Return {"system", "brief": 2-3 sentences with users, core workflows and rough scale, ${sec}}.`);
+        else kase = await this.ask(`Create a deliberately vague system-design prompt for an ambiguity drill, like "Design YouTube".${prev} Return {"system", "brief": the one-line vague prompt, ${sec}}.`);
+        if (mode === 'mc') kase.brief = kase.scenario;
+      }
+      this.setState({ kase, phase: 'active' });
+      if (mode === 'timed') this.timer = setInterval(() => this.setState(s => ({ elapsed: s.elapsed + 1 })), 1000);
+    } catch (e) { this.setState({ phase: 'idle', error: 'Could not draw a case — try again.' }); }
+  }
+  async submit() {
+    const mode = this.mode(); const M = this.state.data.MOCK; const { kase, answers, notes, picks } = this.state;
+    if (mode === 'mc') {
+      const qs = kase.questions; const correct = qs.filter((q, i) => picks[i] === q.answer).length;
+      this.setState({ result: { correct } }); this.recordQuiz(correct / qs.length); return;
+    }
+    clearInterval(this.timer); this.setState({ phase: 'loading', error: null });
+    try {
+      let result;
+      if (!this.live()) { await new Promise(r => setTimeout(r, 900)); result = { seven: M.sevenGrade, product: M.productGrade, timed: { model: M.mockModel, score: 2, note: 'Canned model walk-through — switch on live generation for feedback on your own notes.' }, ambiguity: M.ambiguityGrade }[mode]; }
+      else if (mode === 'seven' || mode === 'product') {
+        const cats = this.cats(); const a = cats.map(c => `${c.key} (${c.label}): ${answers[c.key] || '(no answer)'}`).join('\n');
+        const framing = mode === 'product' ? 'This is a product-shaped question at small scale: reward data modelling, a clear algorithm with a named upgrade, a minimal REST API and an interface that explains why a user returns; penalise infrastructure vocabulary that does not fit.' : '';
+        result = await this.ask(`Case: ${kase.system}. ${kase.brief} Invariant: ${kase.invariant}. ${framing}\nCandidate answers:\n${a}\n\nGrade each category 0-3 and write a model answer. Return {"categories": [ for each key in order ${cats.map(c => c.key).join(', ')}: {"key", "score": 0-3, "model": 3-5 sentence model answer naming concrete mechanisms, "note": one short sentence on what the candidate missed or did well} ]}.`, 4000);
+      } else if (mode === 'timed') {
+        result = await this.ask(`Mock interview prompt: ${kase.system}. ${kase.brief}\nCandidate notes:\n${notes || '(none)'}\n\nReturn {"score": 0-3 overall, "note": one paragraph of feedback on the candidate's notes, "model": [ for each heading in order: Questions to ask, Functional requirements, Non-functional requirements, Estimates, API, Data model & access patterns, Basic working design, Scaling bottlenecks, Alternative designs, Component tradeoffs, Concurrency & failure cases, Security & abuse, Final design, Common weak answers, Follow-up questions: {"phase": heading, "text": 2-4 dense sentences; for tradeoffs name what was rejected and why} ]}.`, 6000);
+      } else {
+        result = await this.ask(`Vague prompt: ${kase.brief}\nCandidate's clarifying questions:\n${notes || '(none)'}\n\nThe five dimensions of ambiguity are: Product scope, Scale, Data semantics, System guarantees, Constraints & priorities. Return {"covered": [dimension names the candidate covered], "missed": [the rest], "score": number covered, "note": one paragraph of feedback, "model": [ one strong question per dimension: {"q", "dim"} ]}.`, 2500);
+      }
+      const pct = (mode === 'seven' || mode === 'product') ? result.categories.reduce((a, c) => a + (c.score || 0), 0) / (this.cats().length * 3) : mode === 'timed' ? (result.score ?? 2) / 3 : (result.covered || []).length / 5;
+      this.setState({ result, phase: 'result' }); this.recordQuiz(pct);
+    } catch (e) { this.setState({ phase: 'active', error: 'Grading failed — try again.' }); }
+  }
+  mode() { return this.state.mode || this.props.defaultMode || 'seven'; }
+  cats() { const D = this.state.data; if (!D) return []; return this.mode() === 'product' ? D.PRODUCT_CATEGORIES : D.CATEGORIES; }
+  renderVals() {
+    const S = this.state, D = S.data; const ACC = 'var(--color-accent)', INK = 'var(--color-text)', BG = 'var(--color-bg)';
+    const chaptersRaw = D ? D.CHAPTERS : []; const isTopics = S.tab === 'topics'; const mode = this.mode();
+    const go = (chapter, section) => { this.setState({ chapter, section, tab: 'topics' }); window.scrollTo(0, 0); };
+    const secItems = (c, ci) => (c.sections || []).map((s, si) => ({ n: String(si + 1).padStart(2, '0'), title: s.title, color: ci === S.chapter && si === S.section ? ACC : INK, weight: ci === S.chapter && si === S.section ? 800 : 400, select: () => go(ci, si) }));
+    const chapters = chaptersRaw.map((c, i) => ({ num: c.num, title: c.title, open: i === S.chapter, sections: secItems(c, i), color: i === S.chapter ? ACC : INK, bg: i === S.chapter && S.section < 0 ? 'var(--color-surface)' : 'transparent', masteryW: Math.round(this.mastery(c.id) * 100) + '%', select: () => go(i, -1) }));
+    const cur = chaptersRaw[S.chapter] || { num: '', title: '', tagline: '', terms: [], objectives: [], sections: [], example: '' };
+    const sectionList = secItems(cur, S.chapter);
+    const isOverview = S.section < 0; const secRaw = (cur.sections || [])[S.section] || { title: '', blocks: [] };
+    const sec = { n: String(S.section + 1).padStart(2, '0'), title: secRaw.title };
+    const pageLabel = isOverview ? `${cur.num} / ${String(chaptersRaw.length).padStart(2, '0')}` : `§ ${sec.n} of ${String((cur.sections || []).length).padStart(2, '0')}`;
+    const CARD_KEYS = [['say', 'Say it'], ['justify', 'Say it'], ['use', 'Use when'], ['avoid', "Don't use when"], ['consider', 'Watch out for'], ['alt', 'Alternatives'], ['tradeoff', 'Tradeoff'], ['fails', 'How it fails'], ['scale', 'At scale'], ['nuance', 'Nuance'], ['cases', 'Design cases'], ['real', 'Real systems']];
+    const isCardKind = k => k === 'card' || k === 'dec';
+    const blocks = (secRaw.blocks || []).map(([k, v]) => ({ isH: k === 'h', isP: k === 'p', isUl: k === 'ul', isT: k === 't', isEx: k === 'ex', isTbl: k === 'tbl', isCard: isCardKind(k), text: typeof v === 'string' ? v : '', items: Array.isArray(v) ? v : [], cols: k === 'tbl' ? v.cols : [], rows: k === 'tbl' ? v.rows : [], card: isCardKind(k) ? { name: v.name, problem: v.problem || '', rows: CARD_KEYS.filter(([key]) => v[key]).map(([key, label]) => { const arr = Array.isArray(v[key]); const quote = key === 'say' || key === 'justify'; return { k: label, v: arr ? '' : v[key], items: arr ? v[key] : [], hasItems: arr, hasText: !arr, color: quote ? ACC : 'var(--color-neutral-700)', italic: quote ? 'italic' : 'normal' }; }) } : { name: '', problem: '', rows: [] } }));
+    // flat page list for prev/next
+    const pages = []; chaptersRaw.forEach((c, ci) => { pages.push({ ci, si: -1, label: `${c.num} · ${c.title}` }); (c.sections || []).forEach((s, si) => pages.push({ ci, si, label: `${c.num}.${si + 1} · ${s.title}` })); });
+    const pi = pages.findIndex(p => p.ci === S.chapter && p.si === S.section); const prevP = pages[pi - 1], nextP = pages[pi + 1];
+    const selfR = S.progress.self[cur.id];
+    const ratings = ['Lost', 'Shaky', 'Solid', 'Could teach it'].map((label, i) => ({ label, bg: selfR === i ? ACC : 'transparent', fg: selfR === i ? BG : INK, pick: () => { const p = { ...S.progress, self: { ...S.progress.self, [cur.id]: i } }; this.save(this.markDay(p)); } }));
+    const q = S.progress.quiz[cur.id]; const quizLine = q && q.length ? `Case-study average for this chapter: ${Math.round(q.reduce((a, b) => a + b, 0) / q.length * 100)}% over ${q.length} ${q.length === 1 ? 'case' : 'cases'}` : 'No case studies have touched this chapter yet';
+    const masteryPct = chaptersRaw.length ? Math.round(chaptersRaw.reduce((a, c) => a + this.mastery(c.id), 0) / chaptersRaw.length * 100) : 0;
+    const scored = chaptersRaw.filter(c => S.progress.self[c.id] != null || (S.progress.quiz[c.id] || []).length).sort((a, b) => this.mastery(a.id) - this.mastery(b.id));
+    const modes = this.MODES.map(m => ({ title: m.title, sub: m.sub, color: m.id === mode ? ACC : INK, bg: m.id === mode ? 'var(--color-surface)' : 'transparent', select: () => { clearInterval(this.timer); this.setState({ mode: m.id, phase: 'idle', kase: null, result: null, error: null }); } }));
+    const M = this.MODES.find(m => m.id === mode);
+    const kase = S.kase || {}; const hasCase = S.phase !== 'idle' && S.phase !== 'loading' && !!S.kase;
+    const kaseChapters = (kase.sections || []).map(id => chaptersRaw.find(c => c.id === id)).filter(Boolean).map(c => ({ num: c.num, title: c.title, open: () => go(chaptersRaw.indexOf(c), -1) }));
+    const CATS = this.cats(); const isCatMode = mode === 'seven' || mode === 'product';
+    const cats = CATS.map(c => ({ ...c, value: S.answers[c.key] || '', onChange: e => this.setState({ answers: { ...this.state.answers, [c.key]: e.target.value } }) }));
+    const R = S.result || {};
+    const gradedCats = (R.categories || []).map(g => { const c = CATS.find(x => x.key === g.key) || {}; return { label: c.label || g.key, note: g.note || '', yours: S.answers[g.key] || '—', model: g.model, pips: [0, 1, 2].map(i => i < (g.score || 0) ? ACC : 'var(--color-neutral-300)') }; });
+    const result = { ...R, total: (R.categories || []).reduce((a, c) => a + (c.score || 0), 0), max: CATS.length * 3, model: R.model || [], covered: R.covered || [] };
+    const mcGraded = mode === 'mc' && !!S.result;
+    const mcQs = (kase.questions || []).map((qq, i) => ({ n: String(i + 1).padStart(2, '0'), q: qq.q, why: mcGraded ? qq.why : '', verdict: S.picks[i] === qq.answer ? 'Correct' : 'Not quite', opts: qq.options.map((text, j) => { const picked = S.picks[i] === j; const right = mcGraded && j === qq.answer; const wrong = mcGraded && picked && !right; return { text, border: right ? ACC : picked ? INK : 'var(--color-divider)', bg: right ? 'var(--color-accent-100)' : picked && !mcGraded ? INK : wrong ? 'var(--color-neutral-200)' : 'transparent', fg: picked && !mcGraded ? BG : right ? 'var(--color-accent-800)' : INK, pick: () => { if (!mcGraded) this.setState({ picks: { ...this.state.picks, [i]: j } }); } }; }) }));
+    const PH = D ? D.PHASES : []; let acc = 0, curPhase = PH[PH.length - 1];
+    const phases = PH.map(p => { const start = acc; acc += p.minutes * 60; const active = S.elapsed >= start && S.elapsed < acc; if (active) curPhase = p; return { label: p.label, minutes: p.minutes, color: active ? ACC : S.elapsed >= acc ? 'var(--color-neutral-600)' : INK, weight: active ? 800 : 400 }; });
+    const left = Math.max(0, 40 * 60 - S.elapsed); const clock = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
+    const dims = (D ? D.DIMENSIONS : []).map(label => { const ok = (R.covered || []).some(c => c.toLowerCase().startsWith(label.toLowerCase().slice(0, 5))); return { label, bg: ok ? INK : 'var(--color-neutral-200)', fg: ok ? BG : 'var(--color-neutral-700)' }; });
+    const act = S.phase === 'active', res = S.phase === 'result';
+    return {
+      isTopics, isCases: !isTopics, goTopics: () => this.setState({ tab: 'topics' }), goCases: () => this.setState({ tab: 'cases' }),
+      topicsTabBg: isTopics ? INK : 'transparent', topicsTabFg: isTopics ? BG : INK, casesTabBg: isTopics ? 'transparent' : INK, casesTabFg: isTopics ? INK : BG,
+      streak: this.streak(), masteryPct, chapters, cur, blocks, ratings, quizLine, showMarginalia: this.props.showMarginalia ?? true,
+      isOverview, isSection: !isOverview, sec, sectionList, pageLabel,
+      hasPrev: !!prevP, hasNext: !!nextP, prevTitle: prevP ? prevP.label : '', nextTitle: nextP ? nextP.label : '',
+      goPrev: () => prevP && go(prevP.ci, prevP.si), goNext: () => nextP && go(nextP.ci, nextP.si),
+      modes, sessions: S.progress.sessions || 0, daysPractised: S.progress.days.length, weakest: scored[0] ? scored[0].title : '—',
+      modeTitle: M.title, modeDesc: M.desc, liveLabel: this.live() ? 'Generated live by Claude' : 'Canned examples · live generation off',
+      isIdle: S.phase === 'idle', isLoading: S.phase === 'loading', loadingText: S.kase && S.phase === 'loading' && S.result === null && (S.notes || Object.keys(S.answers).length) ? 'Writing the model answer…' : 'Drawing a case…',
+      hasError: !!S.error, error: S.error, draw: () => this.draw(), submit: () => this.submit(), reset: () => { clearInterval(this.timer); this.setState({ phase: 'idle', kase: null, result: null, error: null }); },
+      hasCase, kase, kaseChapters, isTimed: mode === 'timed', clock, phaseLabel: res ? 'Finished' : curPhase ? curPhase.label : '',
+      sevenActive: isCatMode && act, sevenResult: isCatMode && res, cats, gradedCats, result,
+      mcActive: mode === 'mc' && act, mcQs, mcUngraded: !mcGraded, mcGraded, mcScore: R.correct || 0, mcTotal: (kase.questions || []).length,
+      timedActive: mode === 'timed' && act, timedResult: mode === 'timed' && res, phases, notes: S.notes, setNotes: e => this.setState({ notes: e.target.value }),
+      ambActive: mode === 'ambiguity' && act, ambResult: mode === 'ambiguity' && res, dims
+    };
+  }
+}
+</script>
+</body>
+</html>

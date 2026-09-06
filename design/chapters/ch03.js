@@ -1,0 +1,81 @@
+const D = (name, o) => ["dec", { name, ...o }];
+export default {id:"scaling",num:"03",title:"Load balancing and scaling",example:"a news site on election night",
+tagline:"From one server to many without a new single point of failure — each technique as: what to say, when, when not, cost, failure mode.",
+terms:["Vertical vs horizontal","L4 vs L7","Least connections","Consistent hashing","Sticky sessions","Health checks","Active-active","Autoscaling","Hot partition"],
+objectives:["Justify every box in the standard request path from a requirement","Pick L4 or L7 and a routing algorithm from traffic shape","Explain consistent hashing well enough to say why only 1/N keys move","Design health checks that don't cascade","Choose active-passive vs active-active and reason about multi-region","Recognise a hot partition and name three fixes"],
+sections:[
+{id:"up-or-out",title:"Scale up or scale out",blocks:[
+D("Vertical scaling",{say:"We're at 500 rps on one box; a bigger box gets us to 5k with zero code changes, so I'd do that first and use the time to make the tier stateless.",
+use:["Early stage, moderate load","Databases — the write leader scales up long before it scales out"],
+avoid:["High availability needs — one box is one failure","Past the biggest instance available"],
+consider:["Every upgrade is a restart","Cost grows faster than capacity at the top end"]}),
+D("Horizontal scaling",{say:"Traffic exceeds one machine and we need to survive a failure, so we add stateless servers behind a balancer and move state into shared stores.",
+use:["Traffic beyond one machine","Availability — a failure costs 1/N capacity, not all"],
+avoid:["Before the tier is stateless — otherwise every server holds different truth"],
+consider:["State must live somewhere all servers reach: DB, cache, queue","Coordination problems move to the datastore"]}),
+["ex","Client → DNS → CDN → Load balancer → App servers → Cache → Database\nCDN      static and cacheable pages never reach origin\nLB       one address; servers come and go\nServers  stateless; any one takes any request\nCache    the DB is the slowest, least elastic component\nDatabase source of truth, protected by everything above"],
+["t","Scale the stateless tier out and the database up until forced to shard. Justify each box or erase it."]
+]},
+{id:"balancer",title:"L4 or L7, and which algorithm",blocks:[
+D("L7 load balancer",{say:"An L7 balancer lets me route /live-results to a dedicated pool with a hotter cache, retry idempotent GETs, and shed load per endpoint.",
+use:["HTTP at the edge","Routing by path, host, header or cookie","Per-endpoint limits and retries"],
+avoid:["Databases, brokers, non-HTTP — use L4"],
+consider:["Terminates connections; CPU per request","Must understand every protocol it carries","Itself needs redundancy — anycast/DNS in front"]}),
+D("L4 load balancer",{say:"For the database and broker traffic we use L4 — fast, protocol-agnostic, blind to content.",
+use:["TCP/UDP services","Raw throughput"],
+avoid:["When routing needs to see the request"]}),
+["tbl",{cols:["Algorithm","Use when","Tradeoff"],rows:[["Round robin","Uniform, short requests","Ignores load"],["Least connections","Requests vary in duration","Per-backend state; favours idle servers"],["Weighted","Mixed machine sizes; canaries at 1%","Weights drift from reality"],["Random two choices","Large fleets","Nearly least-connections, no coordination"],["Hash on key","Cache locality per user/URL","Uneven under skew"]]}],
+D("Sticky sessions",{say:"I'd rather not: pin users only for WebSockets; sessions go in a shared store or a signed cookie so any server can serve anyone.",
+use:["Genuinely stateful connections (WebSockets)"],
+avoid:["In-memory sessions — server dies, users logged out; heavy users pile on one box"],
+consider:["Breaks even distribution and failover"]})
+]},
+{id:"consistent-hashing",title:"Consistent hashing",blocks:[
+D("Consistent hashing",{say:"Cache nodes will be added under load, so I hash keys and nodes onto a ring with virtual nodes; adding a node moves ~1/N of keys instead of ~90% with mod-N.",
+use:["Distributed caches, sharded stores, any tier where nodes join and leave and locality matters"],
+avoid:["Tiny fixed clusters — fixed slots are simpler","Skewed workloads where one key dominates — hashing spreads keys, not load"],
+consider:["Ring is lumpy with few nodes → 100+ virtual nodes per server","Replicate each key to the next K nodes clockwise for redundancy","Clients with inconsistent ring views route the same key differently"],
+fails:"Hot key still lands on one node; removing a node without virtual nodes dumps its whole load on one neighbour.",
+alt:"Fixed virtual partitions (1,024 slots assigned to nodes, moved whole); directory lookup service.",
+cases:["12 cache nodes → 14 on election night: ~14% of entries refill, not 100%","One article is 30% of traffic → the node owning it saturates regardless — see hotspots"]}),
+["ex","Adding 2 nodes to 10\nmod-N hashing        ~92% of keys move → every cache cold\nconsistent hashing   ~8% of keys move → the theoretical minimum"]
+]},
+{id:"health-checks",title:"Health checks and redundancy",blocks:[
+D("Health checks",{say:"Shallow liveness for the balancer so a GC pause doesn't evict a server; deep readiness for deploys so a new instance takes traffic only when its caches and pools are warm.",
+use:["Every balanced tier"],
+avoid:["Deep checks that hit the DB on every probe — a DB hiccup fails every server at once and the balancer removes all of them"],
+consider:["Remove after N consecutive failures, restore after M successes","A busy server should shed load, not fail its check — distinguish 'dead' from 'overloaded'"],
+fails:"Aggressive checks + high utilisation = cascade: one eviction overloads the rest, they fail checks, repeat (Chapter 08).",
+cases:["5 servers at 80% each; one evicted → remaining at 100%. Plan capacity for losing the largest unit."]}),
+D("Active-passive",{say:"The database leader is active-passive: a synchronous standby takes over on failure; simple to reason about, at the cost of idle capacity and a failover moment.",
+use:["Stateful systems where write reconciliation is hard"],
+avoid:["Stateless tiers — no reason not to be active-active"],
+consider:["Standby never serves production until the moment it matters — exercise failover regularly","Failover = detect + promote + repoint: seconds to minutes of downtime"]}),
+D("Active-active",{say:"Every app server serves; a failure is just less capacity and every replica is proven daily.",
+use:["All stateless tiers","Stateful tiers only with conflict resolution (Chapter 04)"],
+consider:["Writes in two places must be reconciled","Capacity headroom must cover losing a whole zone"]}),
+D("Multi-region",{say:"Users are global, so reads come from a nearby region; writes go to one leader region — I accept 100 ms on writes to avoid multi-leader conflicts.",
+use:["Global user base (latency)","Business cannot survive a regional outage (DR)"],
+avoid:["Because it sounds robust — it roughly doubles cost and makes every consistency question hard"],
+consider:["Stateless + CDN replicate effortlessly; the database is the problem","Single-leader: distant writes slow. Multi-leader: conflicts. Pick per dataset","Multi-zone within a region is the cheap default; multi-region is the expensive exception"]}),
+D("Autoscaling",{say:"Autoscaling follows the daily curve; for election night I pre-scale 5× hours ahead and let it handle the descent — it reacts in minutes, not seconds.",
+use:["Predictable curves, steady growth","Worker pools scaling on queue depth"],
+avoid:["Flash crowds and launches — pre-scale","Scaling the database — it doesn't; protect it with caches and queues"],
+fails:"Scale-down during a lull then a second wave; scaling on CPU when the bottleneck is the DB."})
+]},
+{id:"hotspots",title:"Hot partitions and uneven traffic",blocks:[
+["p","Every technique above assumes traffic spreads out. 40k of 50k rps for one results page breaks that: balancing requests evenly does nothing when every server needs the same cache entry from the same node."],
+["tbl",{cols:["Fix","Use when","Tradeoff"],rows:[
+["Cache closer (CDN / in-process)","Hot object is public or per-server staleness is OK","Hardest to invalidate; 10 s edge TTL removes 99.9% of origin traffic"],
+["Replicate the key","One cache node saturates","Write to K nodes, read from any; K× cache writes"],
+["Salt the key","Counter or list written/read at extreme rate","results:0…9 spreads load; fan-in on read"],
+["Coalesce requests","Hot key expires under load","One refill, others wait ms; needs a lock or single-flight"],
+["Better partition key","Hotspot is structural (partition by date)","Partition by article id spreads writes; loses range-by-time locality"],
+["Dedicated pool","One tenant/event dominates","Isolation; capacity may idle"]]}],
+D("Naming the hotspot",{say:"The results page is the hot key. CDN with a 10 s TTL and stale-while-revalidate; counter salted across 8 keys refilled by one worker; the DB sees one write per update, not one read per visitor.",
+use:["Name the hotspot before the interviewer does, in every design"],
+consider:["Sources: one object (viral), one tenant (bulk import), one time range (today's partition), one accidental key (anonymous user id 0)"],
+cases:["Celebrity posts (Ch. 11 fan-out)","Ticket on-sale for one event (Ch. 16)","Today's date partition in a time-range-sharded table (Ch. 04)"]}),
+["t","Hotspot mitigation is locality vs balance: caching close is fastest and hardest to invalidate; salting spreads load and costs a fan-in on every read."]
+]}
+]};
