@@ -15,6 +15,17 @@ body{margin:0;background:#f3f2f2;color:#201e1d}
 a{color:#ae1800}a:hover{color:#ec3013}
 textarea{font:inherit}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+/* Left rail holds its position while the chapter scrolls. Only on wide
+   screens — below this the row wraps and the rail sits above the content,
+   where pinning it would cover the page. */
+@media (min-width:900px){
+  .fg-rail{
+    position:sticky; top:0;
+    max-height:100vh; overflow-y:auto;
+    overscroll-behavior:contain;
+    scrollbar-width:thin;
+  }
+}
 </style>
 </helmet>
 <div style="min-height:100vh;display:flex;flex-direction:column;font-family:var(--font-body)">
@@ -34,7 +45,8 @@ textarea{font:inherit}
   </header>
 
   <div style="display:flex;flex-wrap:wrap;flex:1;align-items:stretch">
-    <aside style="flex:0 0 272px;min-width:0;border-right:2px solid var(--color-divider);padding:28px 0 40px">
+    <aside style="flex:0 0 272px;min-width:0;border-right:2px solid var(--color-divider)">
+      <div class="fg-rail" style="padding:28px 0 40px">
       <sc-if value="{{ isTopics }}" hint-placeholder-val="{{ true }}">
         <div style="padding:0 24px 12px;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent)">Contents</div>
         <sc-for list="{{ chapters }}" as="ch" hint-placeholder-count="15">
@@ -72,6 +84,7 @@ textarea{font:inherit}
           </div>
         </div>
       </sc-if>
+    </div>
     </aside>
 
     <main style="flex:1 1 560px;min-width:0">
