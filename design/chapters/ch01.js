@@ -1,5 +1,5 @@
 const D = (name, o) => ["dec", { name, ...o }];
-export default {id:"what",num:"01",title:"What system design is",example:"a university library",
+export default {id:"what",num:"01",part:"I · What you are being asked to do",title:"What system design is",example:"a university library",
 tagline:"What the phrase actually means, what a design is made of, and why the answer is never a single right one. Assumes nothing.",
 terms:["System","Client","Server","Request","State","Component","Tradeoff","Requirement"],
 objectives:["Say what system design is, and how it differs from writing code","Name the five parts almost every system is built from","Explain why a design question has no single correct answer","Say a decision out loud in the form the rest of this book uses"],

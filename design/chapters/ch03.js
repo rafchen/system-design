@@ -1,30 +1,37 @@
-export default {id:"estimation",num:"03",title:"Back-of-the-envelope estimation",example:"a photo-sharing app",
-tagline:"Turning fuzzy scale into numbers that justify the design. Assumptions matter more than arithmetic — worked through a photo-sharing app from daily users to server count.",
-terms:["DAU","QPS","Peak factor","Read/write ratio","Storage per year","Bandwidth","Replication factor","Working set"],
-objectives:["Carry a dozen reference numbers in your head and use them without hesitation","Chain from daily users to QPS, peak QPS, storage, bandwidth and server count in under three minutes","Separate reads from writes and let the ratio decide where to invest","Attach a consequence to every estimate rather than stopping at the number"],
+const D = (name, o) => ["dec", { name, ...o }];
+export default {id:"measuring",num:"03",part:"I · What you are being asked to do",title:"Measuring systems",example:"a URL shortener",
+tagline:"The words used to say how well a system works — latency, throughput, availability, durability — each turned into a number with a consequence. Every later chapter is chosen against these.",
+terms:["Latency","Throughput","Percentile","p50 / p99","Availability","Durability","Tail latency"],
+objectives:["Say what a system must do in numbers rather than adjectives","Read a percentile and explain why the average is the wrong number","Explain why slow requests compound when one page waits on many services","Tell availability and durability apart, and say which a requirement means"],
 sections:[
-{id:"why-estimate",title:"Why the number matters less than the consequence",blocks:[
-["p","Estimation is not arithmetic practice. It is the step that turns 'design a photo-sharing app' into 'design a system for eleven thousand uploads per second and a petabyte a year', which is a different system from one for eleven uploads per second and a terabyte. The interviewer cares whether your assumptions are reasonable and whether your design follows from the numbers — not whether you carried the two."],
-["p","The running example is a photo-sharing app with a stated hundred million daily active users. Everything below follows from that one number and a handful of assumptions you state out loud."],
-["t","Precision is fake. 'Roughly ten thousand writes a second and a petabyte a year, so object storage for the bytes and a sharded metadata store' is a stronger answer than an exact figure with no decision attached."]
-]},
-{id:"reference-numbers",title:"Numbers to keep in your head",blocks:[
-["ul",["A day has 86,400 seconds. Round to 100,000 when dividing and correct afterwards if it matters.","A month is about 2.5 million seconds; a year about 30 million.","Peak traffic is 2–5× the daily average for consumer apps; launches and viral events reach 10–100×.","A tweet or chat message is a few hundred bytes. A row of metadata is about a kilobyte. A compressed photo is 200 KB–2 MB. A minute of 1080p video is around 100 MB.","A well-tuned application server handles thousands of simple requests per second. A single relational database handles thousands of writes and tens of thousands of indexed reads per second.","Memory is ~100 ns; SSD ~100 µs; datacenter round trip ~500 µs; cross-continent ~150 ms.","A commodity server has 64–256 GB of RAM and tens of terabytes of disk; object storage is effectively unlimited and costs a few cents per gigabyte-month.","1 million = 10⁶, 1 billion = 10⁹, 1 trillion = 10¹². A billion bytes is a gigabyte; a trillion is a terabyte."]],
-["h","Rounding rules"],
-["p","Round early and generously. Ten million divided by 86,400 is 'about 115' — say 100 or 120, not 115.74. Keep powers of ten straight and let the small factors go. If two estimates disagree by less than a factor of two, they agree."]
-]},
-{id:"chain",title:"The chain of estimates",blocks:[
-["ex","Photo-sharing app, 100 M DAU\n\nWRITES\nEach user uploads 0.1 photos/day       → 10 M uploads/day\n10 M / 100,000 s                        ≈ 100 uploads/s average\n× 5 peak                                ≈ 500 uploads/s peak\n\nREADS\nEach user views 50 photos/day           → 5 B views/day\n5 B / 100,000 s                         ≈ 50,000 views/s average\n× 5 peak                                ≈ 250,000 views/s peak\nRead/write ratio                        ≈ 500 : 1\n\nSTORAGE\n10 M uploads × 1 MB                     = 10 TB/day of originals\n× 1.5 for thumbnails and variants       = 15 TB/day\n× 365                                   ≈ 5.5 PB/year\n× 3 replication                         ≈ 16 PB/year raw\nMetadata: 10 M × 1 KB                   = 10 GB/day, 3.6 TB/year\n\nBANDWIDTH\n250,000 views/s × 300 KB (served size)  ≈ 75 GB/s peak egress\n\nCACHE\nHot set = today's and yesterday's uploads viewed heavily\n20% of 2 days' photos × 300 KB          ≈ 1.2 TB of hot bytes\n→ CDN, with a metadata cache of ~10 GB in Redis\n\nSERVERS (metadata API)\n250,000 reads/s ÷ 5,000 per server      ≈ 50 servers at peak\n+ headroom for failure and deploys      ≈ 80"],
-["h","Reading the numbers"],
-["p","The read/write ratio of 500 : 1 says the design is about reads: CDN and caches carry the product, and the database is protected from view traffic entirely. The 500 uploads per second is comfortably one database's write load — for metadata. The 15 TB per day says the bytes cannot live in that database; they go to object storage and the database keeps a pointer (Chapter 04). The 75 GB/s egress says a CDN is not optional; no origin serves that. The 16 PB per year says cost matters and expiry or cold tiering is a design decision, not an afterthought."],
-["t","Every estimate should end in a sentence that begins 'so'. 'Fifty thousand reads a second, so the metadata sits behind a cache.' 'Five petabytes a year, so object storage with lifecycle tiering.' A number with no 'so' is trivia."]
-]},
-{id:"estimation-in-interview",title:"Estimation in the interview",blocks:[
-["p","Spend two or three minutes, not ten. State each assumption before using it — 'I'll assume one upload per ten users per day' — so the interviewer can correct it if they have a number in mind. Do the arithmetic aloud and rounded. Stop when the numbers have told you which components the design needs; the rest is decoration."],
-["h","When the interviewer gives you no numbers"],
-["p","Pick reasonable ones and say so. 'If no scale is specified, I'll assume ten million daily users and a read-heavy workload, and I'll flag where the design changes at ten times that.' This shows you can operate under ambiguity (Chapter 16) and gives the interviewer a chance to redirect."],
-["h","When your estimate says the simple design is enough"],
-["p","Say that too. A system that needs a thousand writes a second and a few terabytes a year is a single leader with read replicas and a cache; sharding it on day one is an error, not ambition. 'This fits one database for the first two years; I would partition by user id when write volume approaches ten thousand a second' is exactly the sentence the interviewer wants."],
-["ex","Common per-user daily assumptions\nMessaging app     40 messages sent, 100 received\nSocial feed       5 posts viewed per open, 10 opens\nVideo platform    30 min watched, 1 upload per 100 users\nRide-hailing      1 ride per 20 users; driver pings every 4 s\nE-commerce        20 page views, 1 order per 30 users"]
+{id:"performance-vocabulary",title:"Performance vocabulary as requirements",blocks:[
+["p","The examples below use a URL shortener: a service where somebody pastes a long link and gets a short code back, and anybody following that code is sent on to the original page. Two operations, nothing else. It is small enough that the numbers stay easy to follow, and it runs as the example through the next two chapters as well."],
+["p","Every word in this section is one you have already heard. The purpose of the section is to stop using them as vocabulary and start using them as requirements, and a requirement is a number attached to a consequence."],
+["h","The mean is the wrong number"],
+["p","Measure your redirect endpoint for an hour and find an average response time of twelve milliseconds. That sounds healthy. It tells you almost nothing."],
+["p","The average is dragged around by outliers and hides the shape of the distribution entirely. Worse, no user experiences the average. Users experience their own request, and the ones deciding whether to come back are the ones on the slow end of it."],
+["p","So sort the responses and look at positions instead. The median, p50, is the request in the middle: half your users had a better time than that. The p99 is the request ninety-nine percent of the way up the sorted list: one request in a hundred was worse."],
+["p","Set targets on those, and notice the uncomfortable part. The slow requests are rarely random. The account with the most links has the most rows to scan. The customer with the longest history has the largest response to assemble. Your p99 is disproportionately your best users, which is precisely the wrong group to be serving worst."],
+["h","Tail latency amplifies"],
+["p","Now the arithmetic that makes the tail worse than it first appears."],
+["p","Suppose one page load makes fifty backend calls, and each backend has a perfectly respectable one-in-a-hundred chance of being slow. What fraction of page loads contain at least one slow call?"],
+["p","Not one percent. It is one minus 0.99 to the fiftieth power — about forty percent."],
+["p","Two page loads in five hit somebody\'s p99. This is why a product can feel sluggish while every individual service dashboard looks fine, and why the p99 of your slowest dependency quietly becomes the p50 of your product. It is also a concrete argument against fanning a request out to more services than it needs."],
+["h","Availability and durability are different promises"],
+["p","A shortener that accepts a link, returns a code, and then loses the row has been perfectly available and has failed completely."],
+["p","Availability is whether the system answers. Durability is whether what it already told you stays true. They fail independently, they are bought with different mechanisms — redundancy for one, replication and a durable write for the other — and a requirement that does not say which it means is not yet a requirement."],
+["tbl",{cols:["Term","State it as","Consequence for the shortener"],rows:[
+["Latency","p99 redirect < 20 ms","Answers must come from copies kept near the reader, not from the database each time (Chapter 13)"],
+["Throughput","50k redirects/s peak, 500 creates/s","Reads must spread across many machines; writes need not"],
+["Availability","Redirects 99.99%, creates 99.9%","Read and write paths fail independently"],
+["Durability","An issued code never changes or disappears","Ack after replication; codes immutable"],
+["Scalability","10× traffic without redesign","Any machine must be able to serve any request (Chapter 12)"],
+["Read/write ratio","100:1","Effort belongs in keeping answers close, not in splitting the data (Chapters 13 and 15)"],
+["Percentiles","p50 5 ms, p99 20 ms","The slow requests come from missing copies and from pauses — measure those, not the mean"]]}],
+D("Percentiles, not averages — measure the slow requests",{say:"I would set the target on the 99th percentile rather than the average, because a page that calls fifty services hits somebody's slowest case on roughly forty percent of loads.",
+use:["Every latency requirement and every alert you write."],
+avoid:["Quoting an average response time in an interview. It hides the shape of the distribution and describes nobody's actual experience."],
+consider:["Sort every response by how long it took. The middle one is the median. The one ninety-nine percent of the way up is the 99th percentile, meaning one request in a hundred was worse than that.","With fifty backend calls each having a one-in-a-hundred chance of being slow, about forty percent of page loads contain at least one slow call. Slowness compounds whenever one page waits on many services at once.","The slow requests are rarely random. The user with the most data has the most to scan, so your worst experiences tend to belong to your most engaged users.","Common causes of a slow tail: a cache miss, a garbage collection pause, waiting on a lock, a connection being opened for the first time, or a slow disk.","Improving the average is easy. Improving the tail is the actual work."]}),
+["t","Availability and durability are different promises: a shortener that acknowledges a link and then forgets it has failed durability while being perfectly available. Say which one each requirement is about."]
 ]}
 ]};

@@ -3,9 +3,17 @@ const T = (rows) => ["tbl", { cols: ["Choice", "Use when", "Main tradeoff"], row
 const C = (name, problem, use, avoid, alt, tradeoff, fails, scale, real, justify) => ["card", { name, problem, use, avoid, alt, tradeoff, fails, scale, real, justify }];
 
 export const DECISIONS = {
-foundations: [
-["p","Every protocol below answers one question: who needs to talk first, and how often? Pick from the traffic shape, then justify with the row's tradeoff."],
-T([["REST","Public CRUD and resource-oriented APIs","Simple and cacheable, but can over-fetch or need several requests"],["GraphQL","Complex clients need flexible related data in one call","Flexible, but caching and query-cost control are harder"],["gRPC","Internal, typed, high-performance service-to-service calls","Efficient, but not browser-friendly and harder to inspect"],["WebSockets","Both sides send frequent real-time updates","True bidirectional, but connections are stateful and must be managed"],["SSE","Server sends one-way updates","Simpler than WebSockets, but not bidirectional"],["Long polling","Compatibility or fallback is required","Works everywhere, but inefficient"],["TCP","Data must arrive complete and in order","Reliable, but handshake latency and head-of-line blocking"],["UDP","Late data is worthless (voice, video, DNS)","No waiting, but no delivery guarantee"]]),
+boundaries: [
+["p","A split always costs the same four things. Against that, name the one benefit you are buying."],
+T([["Monolith","Small team, early product, one transaction boundary","Simple and fast to build, but one deploy unit and one blast radius"],["Modular monolith","Want boundaries without the network","Most of the org benefit, none of the distributed-data cost"],["Microservices","Independent deploy/scale/compliance boundary needed","Independent, but network failures, distributed data, ops overhead"],["Synchronous call","Caller needs the answer to proceed","Simple, but couples availability and latency"],["Event / async","Caller only needs 'accepted'","Decoupled and burst-tolerant, but eventual and harder to debug"]]),
+],
+realtime: [
+["p","Two questions decide it: who needs to initiate, and how often? If only the server sends, you do not need a two-way connection."],
+T([["WebSockets","Both sides send frequent real-time updates","True bidirectional, but connections are stateful and must be managed"],["SSE","Server sends one-way updates","Simpler than WebSockets, but not bidirectional"],["Long polling","Compatibility or fallback is required","Works everywhere, but inefficient"]]),
+],
+network: [
+["p","Below the application, one question settles the transport: if this data arrives late, is it still worth having?"],
+T([["TCP","Data must arrive complete and in order","Reliable, but handshake latency and head-of-line blocking"],["UDP","Late data is worthless (voice, video, DNS)","No waiting, but no delivery guarantee"]]),
 ],
 apis: [
 ["p","Two decisions dominate this chapter: how the contract behaves under retry, and where the service boundary sits. Both are one-way doors."],
@@ -15,12 +23,17 @@ scaling: [
 ["p","Scaling questions are really 'where does state live and what happens when a node vanishes'. The tables settle the first; the cards handle the second."],
 T([["Vertical scaling","Early-stage or moderate load","Simple, but hardware ceiling and one point of failure"],["Horizontal scaling","Load exceeds one machine or HA is needed","Scalable, but state must be shared and coordinated"],["Stateless servers","Any request can go to any server","Trivial scaling, but state lives in a store"],["Sticky sessions","Connection or session state must stay on one machine","Convenient, but imbalance and failover loss"],["L4 balancer","Raw TCP, databases, non-HTTP","Fast, but blind to content"],["L7 balancer","Route by path/header, per-endpoint limits, retries","Smart, but CPU per request and protocol-aware"],["Round robin","Uniform requests","Even, but ignores load"],["Least connections","Requests vary in duration","Adapts, but needs state per backend"],["Consistent hashing","Nodes join/leave; cache or shard locality","Minimal key movement, but skew unless virtual nodes"],["Active-passive","Simple failover for stateful systems","Cheap to reason about, but idle standby and failover risk"],["Active-active","Every replica serves; failure = less capacity","Proven daily, but writes need reconciliation"],["Multi-region","Global latency or regional DR","Fast/robust, but doubles cost and hardens consistency"],["Autoscaling","Predictable daily curves","Saves capacity, but minutes to react — useless for spikes"]]),
 ],
-databases: [
+stores: [
 ["p","Choose the store from the access pattern, the consistency the operation needs and the axis the data grows along — never from the word 'scale'."],
-T([["Relational SQL","Transactions, constraints, joins, structured data","Strong guarantees, but horizontal partitioning is harder"],["Key-value","Lookup by key at huge scale","Fast and partitionable, but no queries beyond the key"],["Document","Flexible objects, evolving schemas, read whole","Convenient, but weak relationships and constraints"],["Wide-column","Massive write volume, partition-then-range reads","Highly scalable, but queries must match the data model"],["Graph","Relationships and traversals are the query","Great traversals, but poor general storage"],["Search engine","Full-text and ranking","Fast search, but never the source of truth"],["Time-series","Timestamped metrics and events","Efficient time queries, but specialised"],["Object storage","Large files, images, video","Cheap and durable, but not for record updates"]]),
-["h","Replication versus sharding"],
-["p","Replication copies data; sharding divides it. Replication buys availability and read capacity; sharding buys write capacity and storage."],
-T([["Replication","Need availability or more read capacity","Copies data but does not grow total capacity"],["Read replicas","Read traffic dominates","Reads scale, but replicas lag"],["Sharding","One machine cannot hold the data or the write load","Scales capacity, but cross-shard queries and transactions get hard"],["Multi-region replication","Global latency and DR matter","Available, but conflict resolution"],["Hash partitioning","Even distribution wanted","Range scans become scatter-gather"],["Range partitioning","Range queries common","Sequential or popular ranges go hot"],["Geographic partitioning","Traffic is region-local (data residency)","Cross-region users and moves are hard"]]),
+T([["Relational SQL","Changes that must succeed or fail together, rules the database enforces, and joins (Chapter 08)","Strong guarantees, but horizontal partitioning is harder"],["Key-value","Lookup by key at huge scale","Fast and partitionable, but no queries beyond the key"],["Document","Flexible objects, evolving schemas, read whole","Convenient, but weak relationships and constraints"],["Wide-column","Massive write volume, partition-then-range reads","Highly scalable, but queries must match the data model"],["Graph","Relationships and traversals are the query","Great traversals, but poor general storage"],["Search engine","Full-text and ranking","Fast search, but never the source of truth"],["Time-series","Timestamped metrics and events","Efficient time queries, but specialised"],["Object storage","Large files, images, video","Cheap and durable, but not for record updates"]]),
+],
+replication: [
+["p","Replication copies data; sharding divides it. Replication buys availability and read capacity; sharding buys write capacity and storage. They answer different problems and are often needed together."],
+T([["Replication","Need availability or more read capacity","Copies data but does not grow total capacity"],["Read replicas","Read traffic dominates","Reads scale, but replicas lag"],["Multi-region replication","Global latency and DR matter","Available, but conflict resolution"]]),
+],
+partitioning: [
+["p","Once the data or the write rate exceeds one machine, the only question left is which key to split on — and which query that makes expensive."],
+T([["Sharding","One machine cannot hold the data or the write load","Scales capacity, but cross-shard queries and transactions get hard"],["Hash partitioning","Even distribution wanted","Range scans become scatter-gather"],["Range partitioning","Range queries common","Sequential or popular ranges go hot"],["Geographic partitioning","Traffic is region-local (data residency)","Cross-region users and moves are hard"]]),
 ],
 distributed: [
 ["p","Consistency is a per-operation choice. Name the weakest model each operation tolerates, then the mechanism that provides it."],
@@ -72,6 +85,6 @@ ambiguity: [
 ],
 plan: [
 ["p","Pick practice systems by the shape you need to train, not by fame."],
-["tbl",{cols:["Shape","Practice systems","Chapters"],rows:[["Contention","Ticketmaster, inventory, ride assignment","04, 10"],["Fan-out","Twitter feed, group chat, notifications","09, 14"],["Large objects","YouTube, Dropbox, Pastebin","04, 14"],["Ordering","WhatsApp, ledgers, logs","09, 10"],["Search","Autocomplete, Google Search","14"],["Async processing","Video pipeline, job scheduler, crawler","09, 11"],["Product-shaped","Meetup matcher, approvals, desk booking","15 §7"]]}]
+["tbl",{cols:["Shape","Practice systems","Chapters"],rows:[["Contention","Ticketmaster, inventory, ride assignment","08, 16"],["Fan-out","Twitter feed, group chat, notifications","17, 22"],["Large objects","YouTube, Dropbox, Pastebin","06, 22"],["Ordering","WhatsApp, ledgers, logs","16, 17"],["Search","Autocomplete, Google Search","22"],["Async processing","Video pipeline, job scheduler, crawler","17, 18"],["Product-shaped","Meetup matcher, approvals, desk booking","23 §7"]]}]
 ]
 };

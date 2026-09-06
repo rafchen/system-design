@@ -88,6 +88,9 @@ textarea{font:inherit}
         <div style="padding:0 24px 12px;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent)">Contents</div>
         <sc-for list="{{ chapters }}" as="ch" hint-placeholder-count="15">
           <div style="border-top:1px solid var(--color-neutral-300)">
+            <sc-if value="{{ ch.showPart }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:16px 24px 7px;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-neutral-700);background:var(--color-surface);border-bottom:1px solid var(--color-neutral-300)">{{ ch.part }}</div>
+            </sc-if>
             <div onClick="{{ ch.select }}" style="display:grid;grid-template-columns:34px 1fr;gap:0 10px;padding:11px 24px;cursor:pointer;color:{{ ch.color }};background:{{ ch.bg }}" style-hover="background:var(--color-neutral-200)">
               <div style="font-family:var(--font-heading);font-weight:800;font-size:13px;padding-top:1px">{{ ch.num }}</div>
               <div style="font-size:14px;line-height:1.3">{{ ch.title }}</div>
@@ -128,7 +131,7 @@ textarea{font:inherit}
       <sc-if value="{{ isTopics }}" hint-placeholder-val="{{ true }}">
         <article style="max-width:960px;padding:36px 56px 72px">
           <div style="display:flex;justify-content:space-between;gap:16px;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700);padding-bottom:10px;border-bottom:2px solid var(--color-text)">
-            <div>Chapter {{ cur.num }} · {{ cur.title }}</div><div style="white-space:nowrap">{{ pageLabel }}</div>
+            <div>{{ cur.part }} &nbsp;·&nbsp; Chapter {{ cur.num }} · {{ cur.title }}</div><div style="white-space:nowrap">{{ pageLabel }}</div>
           </div>
 
           <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
@@ -629,7 +632,7 @@ class Component extends DCLogic {
     const chaptersRaw = D ? D.CHAPTERS : []; const isTopics = S.tab === 'topics'; const mode = this.mode();
     const go = (chapter, section) => { this.setState({ chapter, section, tab: 'topics' }); window.scrollTo(0, 0); };
     const secItems = (c, ci) => (c.sections || []).map((s, si) => ({ n: String(si + 1).padStart(2, '0'), title: s.title, color: ci === S.chapter && si === S.section ? ACC : INK, weight: ci === S.chapter && si === S.section ? 800 : 400, select: () => go(ci, si) }));
-    const chapters = chaptersRaw.map((c, i) => ({ num: c.num, title: c.title, open: i === S.chapter, sections: secItems(c, i), color: i === S.chapter ? ACC : INK, bg: i === S.chapter && S.section < 0 ? 'var(--color-surface)' : 'transparent', masteryW: Math.round(this.mastery(c.id) * 100) + '%', select: () => go(i, -1) }));
+    const chapters = chaptersRaw.map((c, i) => ({ num: c.num, title: c.title, part: c.part || '', showPart: !!c.part && (i === 0 || chaptersRaw[i - 1].part !== c.part), open: i === S.chapter, sections: secItems(c, i), color: i === S.chapter ? ACC : INK, bg: i === S.chapter && S.section < 0 ? 'var(--color-surface)' : 'transparent', masteryW: Math.round(this.mastery(c.id) * 100) + '%', select: () => go(i, -1) }));
     const cur = chaptersRaw[S.chapter] || { num: '', title: '', tagline: '', terms: [], objectives: [], sections: [], example: '' };
     const sectionList = secItems(cur, S.chapter);
     const isOverview = S.section < 0; const secRaw = (cur.sections || [])[S.section] || { title: '', blocks: [] };
